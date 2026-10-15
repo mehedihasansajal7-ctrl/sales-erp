@@ -15,7 +15,10 @@ import type { ReportDefinition, ReportRow } from "@/server/services/report.servi
  */
 
 const PDF_FONT_PATH = process.env.PDF_FONT_PATH ?? "";
-const unicodeFontAvailable = Boolean(PDF_FONT_PATH) && existsSync(PDF_FONT_PATH);
+// `turbopackIgnore` keeps the bundler from tracing the whole project for this
+// optional runtime font lookup (see the Turbopack "dynamic filesystem access" warning).
+const unicodeFontAvailable =
+  Boolean(PDF_FONT_PATH) && existsSync(/* turbopackIgnore: true */ PDF_FONT_PATH);
 
 function pdfText(value: string): string {
   if (unicodeFontAvailable) return value;
