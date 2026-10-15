@@ -1,0 +1,75 @@
+@import "tailwindcss";
+
+/*
+ * Tailwind v4: design tokens live in CSS. This mirrors the shadcn/ui theme
+ * variables while keeping a light, dense, data-first ERP look.
+ */
+:root {
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --card: #ffffff;
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;
+  --border: #e2e8f0;
+  --primary: #059669;
+  --primary-foreground: #ffffff;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --font-sans:
+    var(--font-bengali), ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Nirmala UI",
+    "Noto Sans Bengali", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Numbers in tables must line up. */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+/* ------------------------------------------------------------------ printing */
+@media print {
+  .no-print,
+  nav,
+  aside,
+  header.app-header {
+    display: none !important;
+  }
+
+  body {
+    background: #ffffff;
+  }
+
+  .print-area {
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: none !important;
+  }
+
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+}
