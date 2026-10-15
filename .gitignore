@@ -1,0 +1,44 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+# machine-specific npm cache location (C: drive was full, cache lives on D:)
+.npmrc
+
+# testing
+/coverage
+/playwright-report
+/test-results
+/blob-report
+
+# next.js
+/.next/
+/out/
+/build
+
+# misc
+.DS_Store
+*.pem
+*.tsbuildinfo
+next-env.d.ts
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# env files
+.env
+.env.local
+.env*.local
+
+# database dumps / backups
+/backups/*.sql
+/backups/*.gz
+*.db
+*.db-journal
+
+# generated agent notes
+AGENTS.md
