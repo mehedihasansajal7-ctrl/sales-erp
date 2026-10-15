@@ -1,0 +1,16 @@
+# Normalise line endings: LF in the repository, whatever the platform.
+# The shell script in particular must never be checked out with CRLF.
+* text=auto eol=lf
+
+*.sh text eol=lf
+Dockerfile text eol=lf
+*.prisma text eol=lf
+*.sql text eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.pdf binary
+*.xlsx binary
+*.ttf binary

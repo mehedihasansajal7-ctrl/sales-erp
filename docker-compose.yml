@@ -1,0 +1,82 @@
+# =============================================================================
+# One command to run everything:  docker compose up
+#   * db   — PostgreSQL 16/17 with a persistent volume
+#   * app  — the Next.js application (migrations + demo seed on first start)
+#   * pgadmin — optional database UI:  docker compose --profile tools up
+# =============================================================================
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: sales-erp-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: sales_erp
+    ports:
+      # 5433 on the host so it can coexist with other local Postgres instances.
+      - "5433:5432"
+    volumes:
+      - sales_erp_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d sales_erp"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  app:
+    build: .
+    container_name: sales-erp-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/sales_erp?schema=public&connection_limit=10&pool_timeout=20
+      # CHANGE THIS in production: it signs every session cookie.
+      AUTH_SECRET: ${AUTH_SECRET:-change-me-in-production-please-use-a-long-random-string}
+      SESSION_MAX_AGE_SECONDS: ${SESSION_MAX_AGE_SECONDS:-43200}
+      APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Dhaka}
+      CREDIT_CHECK_ENABLED: ${CREDIT_CHECK_ENABLED:-true}
+      PRIORITY_OVERRIDE_ENABLED: ${PRIORITY_OVERRIDE_ENABLED:-true}
+      # Demo data is created once on first start (idempotent). Set to false later.
+      SEED_ON_START: ${SEED_ON_START:-true}
+      SEED_DEFAULT_PASSWORD: ${SEED_DEFAULT_PASSWORD:-demo1234}
+      # Optional: point this at a Unicode TTF to render ৳ and Bangla inside PDFs.
+      PDF_FONT_PATH: ${PDF_FONT_PATH:-}
+    ports:
+      - "3001:3001"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3001/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+
+  # Optional database UI:  docker compose --profile tools up -d pgadmin
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: sales-erp-pgadmin
+    profiles: ["tools"]
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@sales-erp.local}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin1234}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    ports:
+      - "5050:80"
+    volumes:
+      - sales_erp_pgadmin:/var/lib/pgadmin
+
+volumes:
+  sales_erp_pgdata:
+  sales_erp_pgadmin:
