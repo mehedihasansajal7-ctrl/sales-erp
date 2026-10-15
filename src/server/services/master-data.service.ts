@@ -1,0 +1,228 @@
+import { type Prisma } from "@prisma/client";
+import prisma from "@/lib/prisma";
+import { errors } from "@/lib/errors";
+import { actor, writeAudit, type AuditEntity } from "@/lib/audit";
+import type { ServiceActor } from "@/server/services/order.service";
+
+/**
+ * Admin master data (spec Section 7.8).
+ * Master data is never hard-deleted: records are deactivated so historical
+ * orders, delivery orders and ledger rows keep resolving their references.
+ */
+
+export type ProductInput = {
+  code: string;
+  name: string;
+  category: string;
+  unit?: string;
+  isActive?: boolean;
+};
+
+export async function listProducts(includeInactive = true) {
+  const products = await prisma.product.findMany({
+    where: includeInactive ? {} : { isActive: true },
+    orderBy: { name: "asc" },
+  });
+  return products.map((product) => ({
+    code: product.code,
+    name: product.name,
+    category: product.category,
+    unit: product.unit,
+    isActive: product.isActive,
+  }));
+}
+
+export async function saveProduct(input: ProductInput, admin: ServiceActor, ip?: string) {
+  const before = await prisma.product.findUnique({ where: { code: input.code } });
+  const product = await prisma.product.upsert({
+    where: { code: input.code },
+    create: {
+      code: input.code,
+      name: input.name,
+      category: input.category,
+      unit: input.unit ?? "MT",
+      isActive: input.isActive ?? true,
+      createdBy: admin.id,
+    },
+    update: {
+      name: input.name,
+      category: input.category,
+      unit: input.unit ?? "MT",
+      isActive: input.isActive ?? true,
+    },
+  });
+
+  await writeAudit({
+    ...actor(admin, ip),
+    action: before ? "UPDATE" : "CREATE",
+    entity: "product",
+    entityId: product.code,
+    oldValue: before ? { name: before.name, category: before.category, isActive: before.isActive } : undefined,
+    newValue: { name: product.name, category: product.category, isActive: product.isActive },
+  });
+
+  return product;
+}
+
+export type CustomerInput = {
+  code: string;
+  name: string;
+  phone?: string | null;
+  address?: string | null;
+  creditLimit?: string | null;
+  isActive?: boolean;
+};
+
+export async function listCustomers(filter: { q?: string; isActive?: boolean } = {}) {
+  const where: Prisma.CustomerWhereInput = {
+    ...(filter.isActive === undefined ? {} : { isActive: filter.isActive }),
+    ...(filter.q
+      ? {
+          OR: [
+            { name: { contains: filter.q, mode: "insensitive" } },
+            { code: { contains: filter.q, mode: "insensitive" } },
+            { phone: { contains: filter.q, mode: "insensitive" } },
+          ],
+        }
+      : {}),
+  };
+  const customers = await prisma.customer.findMany({ where, orderBy: { name: "asc" } });
+  return customers.map((customer) => ({
+    code: customer.code,
+    name: customer.name,
+    phone: customer.phone,
+    address: customer.address,
+    creditLimit: customer.creditLimit?.toFixed(2) ?? null,
+    isActive: customer.isActive,
+  }));
+}
+
+export type CustomerRow = Awaited<ReturnType<typeof listCustomers>>[number];
+
+export async function saveCustomer(input: CustomerInput, admin: ServiceActor, ip?: string) {
+  const before = await prisma.customer.findUnique({ where: { code: input.code } });
+  const customer = await prisma.customer.upsert({
+    where: { code: input.code },
+    create: {
+      code: input.code,
+      name: input.name,
+      phone: input.phone ?? null,
+      address: input.address ?? null,
+      creditLimit: input.creditLimit ?? null,
+      isActive: input.isActive ?? true,
+      createdBy: admin.id,
+    },
+    update: {
+      name: input.name,
+      phone: input.phone ?? null,
+      address: input.address ?? null,
+      creditLimit: input.creditLimit ?? null,
+      isActive: input.isActive ?? true,
+    },
+  });
+
+  await writeAudit({
+    ...actor(admin, ip),
+    action: before ? "UPDATE" : "CREATE",
+    entity: "customer",
+    entityId: customer.code,
+    oldValue: before
+      ? {
+          name: before.name,
+          creditLimit: before.creditLimit?.toFixed(2) ?? null,
+          isActive: before.isActive,
+        }
+      : undefined,
+    newValue: {
+      name: customer.name,
+      creditLimit: customer.creditLimit?.toFixed(2) ?? null,
+      isActive: customer.isActive,
+    },
+  });
+
+  return customer;
+}
+
+export type WarehouseInput = {
+  code: string;
+  name: string;
+  location?: string | null;
+  isActive?: boolean;
+};
+
+export async function listWarehouses(includeInactive = true) {
+  const warehouses = await prisma.warehouse.findMany({
+    where: includeInactive ? {} : { isActive: true },
+    orderBy: { name: "asc" },
+  });
+  return warehouses.map((warehouse) => ({
+    code: warehouse.code,
+    name: warehouse.name,
+    location: warehouse.location,
+    isActive: warehouse.isActive,
+  }));
+}
+
+export async function saveWarehouse(input: WarehouseInput, admin: ServiceActor, ip?: string) {
+  const before = await prisma.warehouse.findUnique({ where: { code: input.code } });
+  const warehouse = await prisma.warehouse.upsert({
+    where: { code: input.code },
+    create: {
+      code: input.code,
+      name: input.name,
+      location: input.location ?? null,
+      isActive: input.isActive ?? true,
+      createdBy: admin.id,
+    },
+    update: {
+      name: input.name,
+      location: input.location ?? null,
+      isActive: input.isActive ?? true,
+    },
+  });
+
+  await writeAudit({
+    ...actor(admin, ip),
+    action: before ? "UPDATE" : "CREATE",
+    entity: "warehouse",
+    entityId: warehouse.code,
+    oldValue: before ? { name: before.name, location: before.location, isActive: before.isActive } : undefined,
+    newValue: { name: warehouse.name, location: warehouse.location, isActive: warehouse.isActive },
+  });
+
+  return warehouse;
+}
+
+/** Guards against deactivating master data that still has open activity. */
+export async function assertDeactivatable(
+  entity: AuditEntity,
+  code: string,
+): Promise<{ ok: boolean; reason?: string }> {
+  if (entity === "warehouse") {
+    const openDos = await prisma.deliveryOrder.count({
+      where: { warehouseId: code, status: { in: ["CREATED", "PARTIALLY_DISPATCHED"] } },
+    });
+    if (openDos > 0) return { ok: false, reason: `Warehouse has ${openDos} open delivery order(s).` };
+  }
+  if (entity === "customer") {
+    const openOrders = await prisma.order.count({
+      where: { customerId: code, status: { in: ["PENDING_APPROVAL", "APPROVED", "PARTIALLY_DELIVERED"] } },
+    });
+    if (openOrders > 0) return { ok: false, reason: `Customer has ${openOrders} open order(s).` };
+  }
+  if (entity === "product") {
+    const openOrders = await prisma.orderItem.count({
+      where: {
+        productCode: code,
+        order: { status: { in: ["PENDING_APPROVAL", "APPROVED", "PARTIALLY_DELIVERED"] } },
+      },
+    });
+    if (openOrders > 0) return { ok: false, reason: `Product appears on ${openOrders} open order line(s).` };
+  }
+  return { ok: true };
+}
+
+export async function ensureDeactivatable(entity: AuditEntity, code: string) {
+  const result = await assertDeactivatable(entity, code);
+  if (!result.ok) throw errors.conflict(result.reason ?? "Record cannot be deactivated.");
+}
