@@ -1,0 +1,74 @@
+import { zonedYear } from "@/lib/dates";
+import type { Tx } from "@/lib/prisma";
+import prisma from "@/lib/prisma";
+
+/**
+ * Document numbering: ORD-2026-000123, DO-2026-000045, TRF-2026-000007, PC-2026-000003.
+ *
+ * The counter lives in the `sequences` table and is incremented with a single
+ * atomic UPSERT, so two concurrent requests can never receive the same number
+ * (no SELECT-then-UPDATE race).
+ */
+export type SequenceKind = "order" | "do" | "transfer" | "count" | "customer" | "product" | "warehouse";
+
+const PREFIX_ENV: Record<SequenceKind, string | undefined> = {
+  order: process.env.ORDER_NO_PREFIX,
+  do: process.env.DO_NO_PREFIX,
+  transfer: process.env.TRANSFER_NO_PREFIX,
+  count: process.env.COUNT_NO_PREFIX,
+  customer: undefined,
+  product: undefined,
+  warehouse: undefined,
+};
+
+const DEFAULT_PREFIX: Record<SequenceKind, string> = {
+  order: "ORD",
+  do: "DO",
+  transfer: "TRF",
+  count: "PC",
+  customer: "CUS",
+  product: "PRD",
+  warehouse: "WH",
+};
+
+export function prefixFor(kind: SequenceKind): string {
+  return PREFIX_ENV[kind] || DEFAULT_PREFIX[kind];
+}
+
+/** Atomically reserves the next integer of a named sequence. */
+export async function nextSequenceValue(
+  key: string,
+  tx: Tx | typeof prisma = prisma,
+): Promise<number> {
+  const rows = await tx.$queryRaw<{ value: number }[]>`
+    INSERT INTO sequences (key, value, updated_at)
+    VALUES (${key}, 1, now())
+    ON CONFLICT (key) DO UPDATE SET value = sequences.value + 1, updated_at = now()
+    RETURNING value
+  `;
+  const value = rows[0]?.value;
+  if (value === undefined) throw new Error(`Failed to allocate sequence ${key}`);
+  return value;
+}
+
+export function formatDocNo(kind: SequenceKind, year: number, seq: number, pad = 6): string {
+  return `${prefixFor(kind)}-${year}-${String(seq).padStart(pad, "0")}`;
+}
+
+/** Reserves and formats the next document number for the current APP_TIMEZONE year. */
+export async function nextDocNo(
+  kind: SequenceKind,
+  tx: Tx | typeof prisma = prisma,
+  at: Date = new Date(),
+): Promise<string> {
+  const year = zonedYear(at);
+  const seq = await nextSequenceValue(`${kind}:${year}`, tx);
+  return formatDocNo(kind, year, seq);
+}
+
+/** Yearly document number (order, DO, transfer, count). */
+export function parseDocNo(docNo: string): { prefix: string; year: number; seq: number } | null {
+  const match = /^([A-Z]+)-(\d{4})-(\d+)$/.exec(docNo);
+  if (!match) return null;
+  return { prefix: match[1] as string, year: Number(match[2]), seq: Number(match[3]) };
+}
