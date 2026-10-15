@@ -1,0 +1,568 @@
+// =============================================================================
+// Integrated Sales, Order, Inventory & Delivery Management System
+// Schema: Bulk commodity trading (Fertilizer / Coal / Grain), MT quantities, BDT.
+//
+// Conventions (Section 4 of the specification):
+//   * quantities  -> Decimal(18,3)   (metric tons)
+//   * money       -> Decimal(18,2)   (BDT)
+//   * every master/transaction table carries created_at, updated_at, created_by
+//   * DB level CHECK constraints are added in the same migration (raw SQL) as a
+//     second safety net behind the service layer.
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ----------------------------------------------------------------------------
+// Enums
+// ----------------------------------------------------------------------------
+
+enum Role {
+  ADMIN
+  FINANCE
+  SALES
+  SALES_OPS
+  WAREHOUSE
+  MANAGEMENT
+}
+
+enum RateStatus {
+  ACTIVE
+  SUPERSEDED
+}
+
+enum OrderStatus {
+  PENDING_APPROVAL
+  APPROVED
+  PARTIALLY_DELIVERED
+  COMPLETED
+  REJECTED
+  CANCELLED
+  SHORT_CLOSED
+}
+
+enum DeliveryOrderStatus {
+  CREATED
+  PARTIALLY_DISPATCHED
+  DISPATCHED
+  CANCELLED
+}
+
+enum TransferStatus {
+  REQUESTED
+  APPROVED
+  IN_TRANSIT
+  RECEIVED
+  REJECTED
+}
+
+enum StockCountStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+}
+
+enum MovementType {
+  OPENING
+  INWARD
+  OUTWARD
+  TRANSFER_IN
+  TRANSFER_OUT
+  ADJUSTMENT
+  RESERVE
+  UNRESERVE
+}
+
+// ----------------------------------------------------------------------------
+// Master data
+// ----------------------------------------------------------------------------
+
+model User {
+  id           String  @id @default(cuid())
+  name         String
+  email        String  @unique
+  passwordHash String  @map("password_hash")
+  role         Role
+  warehouseId  String? @map("warehouse_id")
+  isActive     Boolean @default(true) @map("is_active")
+  /// Forces a password change on next login (used for seeded demo accounts).
+  mustChangePassword Boolean @default(false) @map("must_change_password")
+  lastLoginAt  DateTime? @map("last_login_at")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  createdBy String?   @map("created_by")
+
+  warehouse Warehouse? @relation(fields: [warehouseId], references: [code])
+
+  ordersCreated    Order[]             @relation("OrderCreatedBy")
+  ordersApproved   Order[]             @relation("OrderApprovedBy")
+  ratesPublished   Rate[]              @relation("RatePublishedBy")
+  deliveryOrders   DeliveryOrder[]     @relation("DoCreatedBy")
+  dispatches       Dispatch[]          @relation("DispatchRecordedBy")
+  stockLedger      StockLedger[]       @relation("LedgerCreatedBy")
+  transfersCreated StockTransfer[]     @relation("TransferRequestedBy")
+  transfersApproved StockTransfer[]    @relation("TransferApprovedBy")
+  stockCounts      StockCount[]        @relation("StockCountCreatedBy")
+  stockCountsApproved StockCount[]     @relation("StockCountApprovedBy")
+  auditLogs        AuditLog[]
+  sessions         Session[]
+
+  @@index([role, isActive])
+  @@index([warehouseId])
+  @@map("users")
+}
+
+/// Server-side session records (opaque token id -> user). Supports revocation.
+model Session {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  ip        String?
+  userAgent String?  @map("user_agent")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model Product {
+  code     String  @id
+  name     String
+  category String
+  unit     String  @default("MT")
+  isActive Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by")
+
+  rates            Rate[]
+  orderItems       OrderItem[]
+  doItems          DeliveryOrderItem[]
+  stockBalances    StockBalance[]
+  stockLedger      StockLedger[]
+  stockTransfers   StockTransfer[]
+  stockCounts      StockCount[]
+
+  @@index([isActive])
+  @@map("products")
+}
+
+model Customer {
+  code        String  @id
+  name        String
+  phone       String?
+  address     String?
+  /// Credit limit in BDT. null = no limit configured.
+  creditLimit Decimal? @db.Decimal(18, 2) @map("credit_limit")
+  isActive    Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by")
+
+  orders Order[]
+
+  @@index([isActive])
+  @@map("customers")
+}
+
+model Warehouse {
+  code     String  @id
+  name     String
+  location String?
+  isActive Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by")
+
+  users            User[]
+  deliveryOrders   DeliveryOrder[]
+  stockBalances    StockBalance[]
+  stockLedger      StockLedger[]
+  stockCounts      StockCount[]
+  transfersFrom    StockTransfer[] @relation("TransferFrom")
+  transfersTo      StockTransfer[] @relation("TransferTo")
+
+  @@index([isActive])
+  @@map("warehouses")
+}
+
+// ----------------------------------------------------------------------------
+// Rule 1 — rates (append only, published by FINANCE)
+// ----------------------------------------------------------------------------
+
+model Rate {
+  id           String     @id @default(cuid())
+  productCode  String     @map("product_id")
+  ratePerMt    Decimal    @db.Decimal(18, 2) @map("rate_per_mt")
+  effectiveFrom DateTime  @map("effective_from")
+  status       RateStatus @default(ACTIVE)
+  publishedBy  String     @map("published_by")
+  publishedAt  DateTime   @default(now()) @map("published_at")
+  note         String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by")
+
+  product Product     @relation(fields: [productCode], references: [code])
+  publisher User      @relation("RatePublishedBy", fields: [publishedBy], references: [id])
+  orderItems OrderItem[]
+
+  @@index([productCode, effectiveFrom(sort: Desc)])
+  @@index([status])
+  @@map("rates")
+}
+
+// ----------------------------------------------------------------------------
+// Rule 1 + 2 + 3 — orders
+// ----------------------------------------------------------------------------
+
+model Order {
+  id          String      @id @default(cuid())
+  orderNo     String      @unique @map("order_no")
+  customerId  String      @map("customer_id")
+  /// Per-customer monotonically increasing sequence. Delivery priority = ASC.
+  orderSeq    Int         @map("order_seq")
+  orderDate   DateTime    @default(now()) @map("order_date")
+  status      OrderStatus @default(PENDING_APPROVAL)
+
+  totalValue  Decimal     @db.Decimal(18, 2) @map("total_value")
+  remarks     String?
+
+  approvedBy  String?     @map("approved_by")
+  approvedAt  DateTime?   @map("approved_at")
+  rejectionReason String? @map("rejection_reason")
+
+  cancelledBy String?     @map("cancelled_by")
+  cancelledAt DateTime?   @map("cancelled_at")
+  cancelReason String?    @map("cancel_reason")
+
+  shortClosedBy     String?   @map("short_closed_by")
+  shortClosedAt     DateTime? @map("short_closed_at")
+  shortCloseReason  String?   @map("short_close_reason")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by")
+
+  customer   Customer        @relation(fields: [customerId], references: [code])
+  creator    User?           @relation("OrderCreatedBy", fields: [createdBy], references: [id])
+  approver   User?           @relation("OrderApprovedBy", fields: [approvedBy], references: [id])
+  items      OrderItem[]
+  deliveryOrders DeliveryOrder[]
+
+  // Queue query: orders of one customer, in priority order.
+  @@unique([customerId, orderSeq])
+  @@index([status])
+  @@index([customerId, status, orderSeq])
+  @@index([orderDate])
+  @@map("orders")
+}
+
+model OrderItem {
+  id             String  @id @default(cuid())
+  orderId        String  @map("order_id")
+  productCode    String  @map("product_id")
+  qtyMt          Decimal @db.Decimal(18, 3) @map("qty_mt")
+  /// Rule 1 — the rate is copied here when the order is created and never changes.
+  lockedRatePerMt Decimal @db.Decimal(18, 2) @map("locked_rate_per_mt")
+  rateId         String  @map("rate_id")
+  lineValue      Decimal @db.Decimal(18, 2) @map("line_value")
+  /// Sum of quantities dispatched against this line (Rule 4).
+  deliveredMt    Decimal @default(0) @db.Decimal(18, 3) @map("delivered_mt")
+  /// Sum of quantities allocated to non-cancelled DOs (Rule 4).
+  doAllocatedMt  Decimal @default(0) @db.Decimal(18, 3) @map("do_allocated_mt")
+  /// Sales-Ops rate override on a single line (optional, audited).
+  rateOverridden Boolean @default(false) @map("rate_overridden")
+  overrideReason String? @map("override_reason")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by")
+
+  order        Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product      Product            @relation(fields: [productCode], references: [code])
+  rate         Rate               @relation(fields: [rateId], references: [id])
+  doItems      DeliveryOrderItem[]
+
+  @@index([orderId])
+  @@index([productCode])
+  @@map("order_items")
+}
+
+// ----------------------------------------------------------------------------
+// Rule 3, 5, 6 — delivery orders, dispatches
+// ----------------------------------------------------------------------------
+
+model DeliveryOrder {
+  id            String              @id @default(cuid())
+  doNo          String              @unique @map("do_no")
+  orderId       String              @map("order_id")
+  warehouseId   String              @map("warehouse_id")
+  status        DeliveryOrderStatus @default(CREATED)
+  /// Rule 3 exception path — only SALES_OPS, reason mandatory, always audited.
+  priorityOverride Boolean          @default(false) @map("priority_override")
+  overrideReason   String?          @map("override_reason")
+  note             String?
+
+  cancelledBy   String?   @map("cancelled_by")
+  cancelledAt   DateTime? @map("cancelled_at")
+  cancelReason  String?   @map("cancel_reason")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by")
+
+  order     Order               @relation(fields: [orderId], references: [id])
+  warehouse Warehouse           @relation(fields: [warehouseId], references: [code])
+  creator   User?               @relation("DoCreatedBy", fields: [createdBy], references: [id])
+  items     DeliveryOrderItem[]
+  dispatches Dispatch[]
+
+  @@index([orderId])
+  @@index([warehouseId, status])
+  @@index([status])
+  @@map("delivery_orders")
+}
+
+model DeliveryOrderItem {
+  id          String  @id @default(cuid())
+  doId        String  @map("do_id")
+  orderItemId String  @map("order_item_id")
+  productCode String  @map("product_id")
+  qtyMt       Decimal @db.Decimal(18, 3) @map("qty_mt")
+  dispatchedMt Decimal @default(0) @db.Decimal(18, 3) @map("dispatched_mt")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by")
+
+  deliveryOrder DeliveryOrder @relation(fields: [doId], references: [id], onDelete: Cascade)
+  orderItem     OrderItem     @relation(fields: [orderItemId], references: [id])
+  product       Product       @relation(fields: [productCode], references: [code])
+  dispatchItems DispatchItem[]
+
+  @@index([doId])
+  @@index([orderItemId])
+  @@map("delivery_order_items")
+}
+
+model Dispatch {
+  id          String   @id @default(cuid())
+  doId        String   @map("do_id")
+  truckNo     String   @map("truck_no")
+  driverName  String   @map("driver_name")
+  driverPhone String   @map("driver_phone")
+  challanNo   String   @unique @map("challan_no")
+  loadingDate DateTime @map("loading_date")
+  dispatchDate DateTime @map("dispatch_date")
+  remarks     String?
+  recordedBy  String   @map("recorded_by")
+  recordedAt  DateTime @default(now()) @map("recorded_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by")
+
+  deliveryOrder DeliveryOrder  @relation(fields: [doId], references: [id])
+  recorder      User           @relation("DispatchRecordedBy", fields: [recordedBy], references: [id])
+  items         DispatchItem[]
+
+  @@index([doId])
+  @@index([dispatchDate])
+  @@map("dispatches")
+}
+
+model DispatchItem {
+  id           String  @id @default(cuid())
+  dispatchId   String  @map("dispatch_id")
+  doItemId     String  @map("do_item_id")
+  qtyMt        Decimal @db.Decimal(18, 3) @map("qty_mt")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by")
+
+  dispatch     Dispatch          @relation(fields: [dispatchId], references: [id], onDelete: Cascade)
+  deliveryOrderItem DeliveryOrderItem @relation(fields: [doItemId], references: [id])
+
+  @@index([dispatchId])
+  @@index([doItemId])
+  @@map("dispatch_items")
+}
+
+// ----------------------------------------------------------------------------
+// Rule 7 — stock
+// ----------------------------------------------------------------------------
+
+model StockBalance {
+  id          String  @id @default(cuid())
+  warehouseId String  @map("warehouse_id")
+  productCode String  @map("product_id")
+  onHandMt    Decimal @default(0) @db.Decimal(18, 3) @map("on_hand_mt")
+  reservedMt  Decimal @default(0) @db.Decimal(18, 3) @map("reserved_mt")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by")
+
+  warehouse Warehouse @relation(fields: [warehouseId], references: [code])
+  product   Product   @relation(fields: [productCode], references: [code])
+
+  @@unique([warehouseId, productCode])
+  @@map("stock_balances")
+}
+
+/// Immutable movement ledger. One row per movement; never updated, never deleted.
+model StockLedger {
+  id          String       @id @default(cuid())
+  warehouseId String       @map("warehouse_id")
+  productCode String       @map("product_id")
+  movementType MovementType @map("movement_type")
+  /// Signed quantity: positive = stock in, negative = stock out. Reserve/unreserve
+  /// movements carry the reserved delta and do not change on_hand.
+  qtyMt       Decimal      @db.Decimal(18, 3) @map("qty_mt")
+  refType     String?      @map("ref_type")
+  refId       String?      @map("ref_id")
+  balanceAfter Decimal     @db.Decimal(18, 3) @map("balance_after")
+  reservedAfter Decimal    @default(0) @db.Decimal(18, 3) @map("reserved_after")
+  note        String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by")
+
+  warehouse Warehouse @relation(fields: [warehouseId], references: [code])
+  product   Product   @relation(fields: [productCode], references: [code])
+  creator   User?     @relation("LedgerCreatedBy", fields: [createdBy], references: [id])
+
+  @@index([warehouseId, productCode, createdAt(sort: Desc)])
+  @@index([movementType])
+  @@index([refType, refId])
+  @@map("stock_ledger")
+}
+
+model StockTransfer {
+  id              String         @id @default(cuid())
+  transferNo      String         @unique @map("transfer_no")
+  fromWarehouseId String         @map("from_warehouse_id")
+  toWarehouseId   String         @map("to_warehouse_id")
+  productCode     String         @map("product_id")
+  qtyMt           Decimal        @db.Decimal(18, 3) @map("qty_mt")
+  status          TransferStatus @default(REQUESTED)
+  reason          String?
+
+  requestedBy     String   @map("requested_by")
+  requestedAt     DateTime @default(now()) @map("requested_at")
+  approvedBy      String?  @map("approved_by")
+  approvedAt      DateTime? @map("approved_at")
+  inTransitAt     DateTime? @map("in_transit_at")
+  receivedAt      DateTime? @map("received_at")
+  rejectedAt      DateTime? @map("rejected_at")
+  rejectReason    String?  @map("reject_reason")
+  /// Warehouse that received this transfer (must match toWarehouse unless ADMIN).
+  receivedBy      String?  @map("received_by")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by")
+
+  fromWarehouse Warehouse @relation("TransferFrom", fields: [fromWarehouseId], references: [code])
+  toWarehouse   Warehouse @relation("TransferTo", fields: [toWarehouseId], references: [code])
+  product       Product   @relation(fields: [productCode], references: [code])
+  requester     User      @relation("TransferRequestedBy", fields: [requestedBy], references: [id])
+  approver      User?     @relation("TransferApprovedBy", fields: [approvedBy], references: [id])
+
+  @@index([fromWarehouseId, status])
+  @@index([toWarehouseId, status])
+  @@map("stock_transfers")
+}
+
+model StockCount {
+  id          String           @id @default(cuid())
+  countNo     String           @unique @map("count_no")
+  warehouseId String           @map("warehouse_id")
+  productCode String           @map("product_id")
+  systemQty   Decimal          @db.Decimal(18, 3) @map("system_qty")
+  physicalQty Decimal          @db.Decimal(18, 3) @map("physical_qty")
+  difference  Decimal          @db.Decimal(18, 3)
+  status      StockCountStatus @default(PENDING_APPROVAL)
+  countDate   DateTime         @default(now()) @map("count_date")
+  reason      String?
+  remarks     String?
+
+  approvedBy String?   @map("approved_by")
+  approvedAt DateTime? @map("approved_at")
+  rejectedReason String? @map("rejected_reason")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by")
+
+  warehouse Warehouse @relation(fields: [warehouseId], references: [code])
+  product   Product   @relation(fields: [productCode], references: [code])
+  creator   User?     @relation("StockCountCreatedBy", fields: [createdBy], references: [id])
+  approver  User?     @relation("StockCountApprovedBy", fields: [approvedBy], references: [id])
+
+  @@index([warehouseId, status])
+  @@map("stock_counts")
+}
+
+// ----------------------------------------------------------------------------
+// Rule 8 — audit trail (append only)
+// ----------------------------------------------------------------------------
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?  @map("user_id")
+  userName  String?  @map("user_name")
+  action    String
+  entity    String
+  entityId  String?  @map("entity_id")
+  oldValue  Json?    @map("old_value")
+  newValue  Json?    @map("new_value")
+  ip        String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([entity, entityId])
+  @@index([userId])
+  @@index([createdAt(sort: Desc)])
+  @@index([action])
+  @@map("audit_logs")
+}
+
+model SystemSetting {
+  key       String   @id
+  value     String
+  description String?
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  createdBy String?  @map("created_by")
+
+  @@map("system_settings")
+}
+
+/// Monotonic counters for document numbering (ORD-2026-000123, DO-..., etc.).
+model Sequence {
+  key       String   @id
+  value     Int      @default(0)
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("sequences")
+}
