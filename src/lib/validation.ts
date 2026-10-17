@@ -154,27 +154,25 @@ export const warehouseSchema = z.object({
   isActive: z.boolean().default(true),
 });
 
+/** Empty form fields must become `undefined`, never `""` (an empty FK would fail). */
+const optionalCode = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+  z.string().trim().min(1).max(30).optional(),
+);
+
 export const userCreateSchema = z.object({
   name: trimmedString(2, 120),
   email: emailSchema,
   password: z.string().min(8, "Password must be at least 8 characters.").max(200),
   role: z.enum(["ADMIN", "FINANCE", "SALES", "SALES_OPS", "WAREHOUSE", "MANAGEMENT"]),
-  warehouseCode: z
-    .string()
-    .trim()
-    .optional()
-    .or(z.literal("").transform(() => undefined)),
+  warehouseCode: optionalCode,
   isActive: z.boolean().default(true),
 });
 
 export const userUpdateSchema = z.object({
   name: trimmedString(2, 120),
   role: z.enum(["ADMIN", "FINANCE", "SALES", "SALES_OPS", "WAREHOUSE", "MANAGEMENT"]),
-  warehouseCode: z
-    .string()
-    .trim()
-    .optional()
-    .or(z.literal("").transform(() => undefined)),
+  warehouseCode: optionalCode,
   isActive: z.boolean().default(true),
 });
 

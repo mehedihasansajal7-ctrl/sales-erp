@@ -69,7 +69,8 @@ export async function createUser(input: CreateUserInput, admin: ServiceActor, ip
       email: input.email,
       passwordHash: await hashPassword(input.password),
       role: input.role,
-      warehouseId: input.warehouseCode ?? null,
+      // "" must become NULL: users.warehouse_id is a foreign key to warehouses(code).
+      warehouseId: input.warehouseCode || null,
       isActive: input.isActive ?? true,
       createdBy: admin.id,
     },
@@ -118,7 +119,7 @@ export async function updateUser(
     data: {
       name: input.name,
       role: input.role,
-      warehouseId: input.warehouseCode ?? null,
+      warehouseId: input.warehouseCode || null,
       isActive: input.isActive,
     },
     include: { warehouse: true },
