@@ -3,7 +3,7 @@ import { roleHasPermission } from "@/lib/rbac";
 import { formatDateTime } from "@/lib/dates";
 import { listTransfers } from "@/server/services/transfer.service";
 import { listProducts, listWarehouses } from "@/server/services/master-data.service";
-import { formatMt } from "@/lib/utils";
+import { formatNumber } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable, PageHeader, Pagination, StatusBadge } from "@/components/page-header";
 import { TransferActions, TransferRequestForm } from "@/components/forms/warehouse-forms";
@@ -48,7 +48,7 @@ export default async function TransfersPage({
       ),
     },
     { key: "productName", label: "Product" },
-    { key: "qtyMt", label: "Qty (MT)", align: "right" as const, render: (row: Row) => formatMt(row.qtyMt) },
+    { key: "qtyMt", label: "Qty (MT)", align: "right" as const, render: (row: Row) => formatNumber(row.qtyMt) },
     {
       key: "status",
       label: "Status",

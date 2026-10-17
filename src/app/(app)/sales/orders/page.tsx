@@ -5,7 +5,7 @@ import { roleHasPermission } from "@/lib/rbac";
 import { formatDate } from "@/lib/dates";
 import { listOrders } from "@/server/services/order.service";
 import { listCustomers } from "@/server/services/master-data.service";
-import { formatBdt, formatMt } from "@/lib/utils";
+import { formatBdt, formatNumber } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { DataTable, FilterBar, PageHeader, Pagination, ProgressBar, StatusBadge, type Column } from "@/components/page-header";
 import { ORDER_STATUS_LABELS } from "@/lib/state-machines";
@@ -64,9 +64,9 @@ export default async function OrdersPage({
       label: "Status",
       render: (row) => <StatusBadge status={row.status} label={row.statusLabel} />,
     },
-    { key: "orderedMt", label: "Ordered", align: "right", render: (row) => formatMt(row.orderedMt) },
-    { key: "deliveredMt", label: "Delivered", align: "right", render: (row) => formatMt(row.deliveredMt) },
-    { key: "remainingMt", label: "Remaining", align: "right", render: (row) => formatMt(row.remainingMt) },
+    { key: "orderedMt", label: "Ordered (MT)", align: "right", render: (row) => formatNumber(row.orderedMt) },
+    { key: "deliveredMt", label: "Delivered (MT)", align: "right", render: (row) => formatNumber(row.deliveredMt) },
+    { key: "remainingMt", label: "Remaining (MT)", align: "right", render: (row) => formatNumber(row.remainingMt) },
     {
       key: "progress",
       label: "Progress",

@@ -4,7 +4,7 @@ import { requirePermission } from "@/lib/auth";
 import { formatDate, formatDateTime, toDateTimeLocalValue } from "@/lib/dates";
 import { getDeliveryOrder } from "@/server/services/delivery-order.service";
 import { isAppError } from "@/lib/errors";
-import { formatMt } from "@/lib/utils";
+import { formatMt, formatNumber } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable, DetailList, PageHeader, ProgressBar, StatusBadge } from "@/components/page-header";
@@ -125,7 +125,7 @@ export default async function WarehouseDispatchOrderPage({
                 { key: "truckNo", label: "Truck" },
                 { key: "driverName", label: "Driver" },
                 { key: "driverPhone", label: "Phone" },
-                { key: "qtyMt", label: "Qty (MT)", align: "right", render: (row) => formatMt(row.qtyMt) },
+                { key: "qtyMt", label: "Qty (MT)", align: "right", render: (row) => formatNumber(row.qtyMt) },
                 { key: "loadingDate", label: "Loading", render: (row) => formatDate(row.loadingDate) },
                 { key: "dispatchDate", label: "Dispatched", render: (row) => formatDate(row.dispatchDate) },
                 { key: "recordedByName", label: "Recorded by" },

@@ -3,7 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { formatDateTime } from "@/lib/dates";
 import { listDeliveryOrders } from "@/server/services/delivery-order.service";
 import { listWarehouses } from "@/server/services/master-data.service";
-import { formatMt } from "@/lib/utils";
+import { formatNumber } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { DataTable, FilterBar, PageHeader, Pagination, ProgressBar, StatusBadge, type Column } from "@/components/page-header";
 
@@ -62,8 +62,8 @@ export default async function DeliveryOrdersPage({
     { key: "customerName", label: "Customer" },
     { key: "warehouseName", label: "Warehouse" },
     { key: "status", label: "Status", render: (row) => <StatusBadge status={row.status} label={row.statusLabel} /> },
-    { key: "qtyMt", label: "DO qty", align: "right", render: (row) => formatMt(row.qtyMt) },
-    { key: "dispatchedMt", label: "Dispatched", align: "right", render: (row) => formatMt(row.dispatchedMt) },
+    { key: "qtyMt", label: "DO qty (MT)", align: "right", render: (row) => formatNumber(row.qtyMt) },
+    { key: "dispatchedMt", label: "Dispatched (MT)", align: "right", render: (row) => formatNumber(row.dispatchedMt) },
     {
       key: "progress",
       label: "Progress",

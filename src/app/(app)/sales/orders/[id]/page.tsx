@@ -5,7 +5,7 @@ import { roleHasPermission } from "@/lib/rbac";
 import { formatDate, formatDateTime } from "@/lib/dates";
 import { getOrderDetail, runApprovalChecks } from "@/server/services/order.service";
 import { cancelOrderAction as cancelAction, shortCloseOrderAction as shortCloseAction } from "@/actions/order";
-import { formatBdt, formatMt, humanize } from "@/lib/utils";
+import { formatBdt, formatMt, formatNumber, humanize } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable, DetailList, PageHeader, ProgressBar, StatusBadge, type Column } from "@/components/page-header";
@@ -84,10 +84,10 @@ export default async function OrderDetailPage({
         </span>
       ),
     },
-    { key: "qtyMt", label: "Ordered (MT)", align: "right", render: (row) => formatMt(row.qtyMt) },
-    { key: "deliveredMt", label: "Delivered (MT)", align: "right", render: (row) => formatMt(row.deliveredMt) },
-    { key: "doAllocatedMt", label: "In DOs (MT)", align: "right", render: (row) => formatMt(row.doAllocatedMt) },
-    { key: "remainingMt", label: "Remaining (MT)", align: "right", render: (row) => formatMt(row.remainingMt) },
+     { key: "qtyMt", label: "Ordered (MT)", align: "right", render: (row) => formatNumber(row.qtyMt) },
+    { key: "deliveredMt", label: "Delivered (MT)", align: "right", render: (row) => formatNumber(row.deliveredMt) },
+    { key: "doAllocatedMt", label: "In DOs (MT)", align: "right", render: (row) => formatNumber(row.doAllocatedMt) },
+    { key: "remainingMt", label: "Remaining (MT)", align: "right", render: (row) => formatNumber(row.remainingMt) },
     {
       key: "lockedRatePerMt",
       label: "Locked rate (৳/MT)",
@@ -130,9 +130,9 @@ export default async function OrderDetailPage({
     },
     { key: "warehouseName", label: "Warehouse" },
     { key: "status", label: "Status", render: (row) => <StatusBadge status={row.status} /> },
-    { key: "qtyMt", label: "Qty (MT)", align: "right", render: (row) => formatMt(row.qtyMt) },
-    { key: "dispatchedMt", label: "Dispatched (MT)", align: "right", render: (row) => formatMt(row.dispatchedMt) },
-    { key: "remainingMt", label: "Pending (MT)", align: "right", render: (row) => formatMt(row.remainingMt) },
+    { key: "qtyMt", label: "Qty (MT)", align: "right", render: (row) => formatNumber(row.qtyMt) },
+    { key: "dispatchedMt", label: "Dispatched (MT)", align: "right", render: (row) => formatNumber(row.dispatchedMt) },
+    { key: "remainingMt", label: "Pending (MT)", align: "right", render: (row) => formatNumber(row.remainingMt) },
     {
       key: "priorityOverride",
       label: "Override",
@@ -200,8 +200,8 @@ export default async function OrderDetailPage({
 
       {created ? (
         <p className="mb-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-          Order created and submitted for approval. The rate is locked at ৳
-          {order.items[0]?.lockedRatePerMt ?? "0.00"}/MT.
+          Order created and submitted for approval. The rate is locked at{" "}
+          {formatBdt(order.items[0]?.lockedRatePerMt ?? "0")}/MT.
         </p>
       ) : null}
 
@@ -393,7 +393,7 @@ export default async function OrderDetailPage({
                 { key: "truckNo", label: "Truck" },
                 { key: "driverName", label: "Driver" },
                 { key: "driverPhone", label: "Phone" },
-                { key: "qtyMt", label: "Qty (MT)", align: "right", render: (row) => formatMt(row.qtyMt) },
+                { key: "qtyMt", label: "Qty (MT)", align: "right", render: (row) => formatNumber(row.qtyMt) },
                 { key: "dispatchDate", label: "Dispatched", render: (row) => formatDate(row.dispatchDate) },
                 { key: "recordedBy", label: "Recorded by" },
               ]}

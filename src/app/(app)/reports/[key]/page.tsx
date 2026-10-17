@@ -4,7 +4,7 @@ import { requirePermission } from "@/lib/auth";
 import { defaultFromZonedDateString, toZonedDateString, zonedToUtc } from "@/lib/dates";
 import { REPORTS, getReport, type ReportKey } from "@/server/services/report.service";
 import { listCustomers, listProducts, listWarehouses } from "@/server/services/master-data.service";
-import { formatBdt, formatMt } from "@/lib/utils";
+import { formatBdt, formatMt, formatNumber } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { DataTable, PageHeader, type Column } from "@/components/page-header";
@@ -82,7 +82,10 @@ export default async function ReportPage({
     render: (row) => {
       const value = row[column.key] ?? "";
       if (column.kind === "money") return formatBdt(value);
-      if (column.kind === "mt") return formatMt(value);
+      // The unit lives in the column header ("Ordered (MT)"): the cell is a bare number.
+      if (column.kind === "mt") {
+        return /MT/i.test(column.label) ? formatNumber(value, 3) : formatMt(value);
+      }
       return value === "" ? "—" : value;
     },
   }));
@@ -234,7 +237,9 @@ export default async function ReportPage({
                   <span className="font-semibold tabular-nums">
                     {report.columns.find((column) => column.label === total.column)?.kind === "money"
                       ? formatBdt(total.value)
-                      : formatMt(total.value)}
+                      : /MT/i.test(total.column)
+                        ? formatNumber(total.value, 3)
+                        : formatMt(total.value)}
                   </span>
                 </span>
               ))}

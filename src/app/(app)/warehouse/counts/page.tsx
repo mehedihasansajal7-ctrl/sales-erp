@@ -3,7 +3,7 @@ import { roleHasPermission } from "@/lib/rbac";
 import { formatDateTime } from "@/lib/dates";
 import { listStockCounts } from "@/server/services/stock-count.service";
 import { listProducts, listWarehouses } from "@/server/services/master-data.service";
-import { formatMt } from "@/lib/utils";
+import { formatNumber } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable, PageHeader, Pagination, StatusBadge } from "@/components/page-header";
 import { CountActions, CountEntryForm } from "@/components/forms/warehouse-forms";
@@ -38,12 +38,12 @@ export default async function StockCountsPage({
     { key: "countDate", label: "Date", render: (row: Row) => formatDateTime(row.countDate) },
     { key: "warehouseName", label: "Warehouse" },
     { key: "productName", label: "Product" },
-    { key: "systemQty", label: "System (MT)", align: "right" as const, render: (row: Row) => formatMt(row.systemQty) },
+    { key: "systemQty", label: "System (MT)", align: "right" as const, render: (row: Row) => formatNumber(row.systemQty) },
     {
       key: "physicalQty",
       label: "Physical (MT)",
       align: "right" as const,
-      render: (row: Row) => formatMt(row.physicalQty),
+      render: (row: Row) => formatNumber(row.physicalQty),
     },
     {
       key: "difference",
@@ -51,7 +51,7 @@ export default async function StockCountsPage({
       align: "right" as const,
       render: (row: Row) => (
         <span className={Number(row.difference) < 0 ? "font-medium text-red-600" : "font-medium"}>
-          {formatMt(row.difference)}
+          {formatNumber(row.difference)}
         </span>
       ),
     },

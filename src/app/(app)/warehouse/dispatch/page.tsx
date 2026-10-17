@@ -4,7 +4,7 @@ import { formatDate } from "@/lib/dates";
 import { zonedToUtc } from "@/lib/dates";
 import { listDispatches } from "@/server/services/dispatch.service";
 import { listWarehouses } from "@/server/services/master-data.service";
-import { formatMt } from "@/lib/utils";
+import { formatNumber } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { DataTable, FilterBar, PageHeader, Pagination } from "@/components/page-header";
 
@@ -110,7 +110,7 @@ export default async function DispatchRegisterPage({
             label: "Products",
             render: (row) => row.items.map((item) => item.productName).join(", ") || "—",
           },
-          { key: "qtyMt", label: "Qty (MT)", align: "right", render: (row) => formatMt(row.qtyMt) },
+          { key: "qtyMt", label: "Qty (MT)", align: "right", render: (row) => formatNumber(row.qtyMt) },
           { key: "truckNo", label: "Truck" },
           {
             key: "driver",

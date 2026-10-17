@@ -5,7 +5,7 @@ import { roleHasPermission } from "@/lib/rbac";
 import { formatDate, formatDateTime } from "@/lib/dates";
 import { getDeliveryOrder } from "@/server/services/delivery-order.service";
 import { isAppError } from "@/lib/errors";
-import { formatMt } from "@/lib/utils";
+import { formatMt, formatNumber } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable, DetailList, PageHeader, ProgressBar, StatusBadge } from "@/components/page-header";
@@ -151,18 +151,18 @@ export default async function DeliveryOrderDetailPage({
             <DataTable
               columns={[
                 { key: "productName", label: "Product" },
-                { key: "qtyMt", label: "Qty (MT)", align: "right", render: (row) => formatMt(row.qtyMt) },
+                { key: "qtyMt", label: "Qty (MT)", align: "right", render: (row) => formatNumber(row.qtyMt) },
                 {
                   key: "dispatchedMt",
                   label: "Dispatched (MT)",
                   align: "right",
-                  render: (row) => formatMt(row.dispatchedMt),
+                  render: (row) => formatNumber(row.dispatchedMt),
                 },
                 {
                   key: "remainingMt",
                   label: "Pending (MT)",
                   align: "right",
-                  render: (row) => formatMt(row.remainingMt),
+                  render: (row) => formatNumber(row.remainingMt),
                 },
               ]}
               rows={deliveryOrder.items}
@@ -181,7 +181,7 @@ export default async function DeliveryOrderDetailPage({
                 { key: "challanNo", label: "Challan" },
                 { key: "truckNo", label: "Truck" },
                 { key: "driverName", label: "Driver" },
-                { key: "qtyMt", label: "Qty (MT)", align: "right", render: (row) => formatMt(row.qtyMt) },
+                { key: "qtyMt", label: "Qty (MT)", align: "right", render: (row) => formatNumber(row.qtyMt) },
                 { key: "dispatchDate", label: "Dispatched", render: (row) => formatDate(row.dispatchDate) },
                 {
                   key: "action",

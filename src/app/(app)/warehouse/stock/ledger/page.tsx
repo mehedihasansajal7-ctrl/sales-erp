@@ -2,7 +2,7 @@ import { requireUser } from "@/lib/auth";
 import { zonedToUtc, formatDateTime } from "@/lib/dates";
 import prisma from "@/lib/prisma";
 import { listProducts, listWarehouses } from "@/server/services/master-data.service";
-import { formatMt } from "@/lib/utils";
+import { formatMt, formatNumber } from "@/lib/utils";
 import { DataTable, FilterBar, PageHeader, Pagination } from "@/components/page-header";
 
 export const dynamic = "force-dynamic";
@@ -131,7 +131,7 @@ export default async function StockLedgerPage({
             label: "Movement",
             render: (row) => row.movementType.replace(/_/g, " "),
           },
-          { key: "qtyMt", label: "Qty (MT)", align: "right", render: (row) => formatMt(row.qtyMt.toString()) },
+          { key: "qtyMt", label: "Qty (MT)", align: "right", render: (row) => formatNumber(row.qtyMt.toString()) },
           {
             key: "balanceAfter",
             label: "On hand after",

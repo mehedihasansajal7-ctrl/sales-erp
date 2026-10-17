@@ -148,7 +148,7 @@ export function OrderCreateForm({
                 <div className="flex flex-col gap-1">
                   <span className="text-sm font-medium text-slate-700">Locked rate</span>
                   <span className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm tabular-nums">
-                    {product?.ratePerMt ? `৳ ${product.ratePerMt} / MT` : "—"}
+                    {product?.ratePerMt ? `${formatBdt(product.ratePerMt)} / MT` : "—"}
                   </span>
                   <span className="text-xs text-slate-500">
                     {lineValue !== null ? `Line value ${formatBdt(lineValue)}` : "\u00a0"}
