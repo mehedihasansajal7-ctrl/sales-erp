@@ -54,30 +54,28 @@ exports print `BDT` until a Unicode font is supplied:
 * **CSV/Excel import** of opening stock and customer master data (an import wizard).
 * **Barcode / weighbridge integration** at the dispatch screen (the dispatch form is the natural hook).
 
-## 6. Environment issue on the build machine (2026-10-15) — needs one restart
+## 6. Machine-specific notes (already fixed on 2026-10-17)
 
-`C:` ran out of disk space during a Docker image build, and Docker Desktop then could not restart
-(`Wsl/Service/AttachDisk/CreateVm/ERROR_TIMEOUT` — WSL could not attach `docker_data.vhdx`).
+**Docker disk moved to D:.** `C:` kept filling up (0.28–0.41 GB free) and took the Docker engine down
+with it. Docker's 9.3 GB data disk now lives on `D:\docker\data`, with
+`%LOCALAPPDATA%\Docker\wsl\disk` repointed to it as a **junction**
+(`cmd /c mklink /J "C:\Users\user\AppData\Local\Docker\wsl\disk" "D:\docker\data"`).
+`C:` now has ~10.6 GB free and all images/volumes survived.
 
-* **Nothing is lost.** The VHDX, images and volumes (including other projects' databases) are intact.
-* **A normal Windows restart (or Docker Desktop → Troubleshoot → Restart) clears it.**
-  If it does not, use Docker Desktop's "Clean / Purge data" only as a last resort — that deletes the
-  images and volumes, so dump anything important first.
-* Free space first: `docker system df`, `docker builder prune -f`, empty `%TEMP%`.
+If Docker fails again with `Wsl/Service/AttachDisk/CreateVm/ERROR_TIMEOUT` or HTTP 500s from the
+engine: check free space on `C:` first, then `wsl --shutdown` and restart Docker Desktop. If the
+junction is ever removed, that same `mklink` command restores it (the data is on D:).
 
-Then verify from the project folder:
+**Windows build-context gotcha.** Docker Desktop occasionally handed the build **0-byte** copies of
+`next.config.ts`, `tsconfig.json` and `docker-entrypoint.sh` (files that git had rewritten). That
+produced an image that died with `exec ./docker-entrypoint.sh: exec format error` and silently lost
+`serverExternalPackages`. The `Dockerfile` now fails the build if any of those files arrive empty,
+and it strips CRLF from the entrypoint (`sed -i 's/\r$//'`). If a build fails with that guard,
+`git checkout -- next.config.ts tsconfig.json docker-entrypoint.sh` and rebuild.
 
-```powershell
-docker compose up --build -d      # db + app
-docker compose ps                 # both healthy
-curl http://localhost:3001/api/health
-npm run test                      # 74/74
-npm run test:e2e                  # PW_CHANNEL=msedge (default on Windows) or =chrome
-npm run seed:load                 # 10 000 orders for the performance check
-```
-
-Remaining checks that only that run can confirm: the `docker compose up` one-command start
-(migrations + demo seed inside the container) and the browser journeys end to end.
+Everything else that was previously listed as "pending verification" is now done:
+`docker compose up` ✔ · `/api/health` ✔ · migrations + idempotent seed inside the container ✔ ·
+printables and report exports ✔ · the 74 automated tests ✔.
 
 ---
 

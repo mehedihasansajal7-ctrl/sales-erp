@@ -20,6 +20,12 @@ RUN npm ci --include=dev --ignore-scripts
 FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+# Fail loudly if the build context delivers empty files. This has been observed on
+# Windows/Docker Desktop for files that git rewrote: an empty next.config.ts silently
+# drops `serverExternalPackages`, which breaks the Excel/PDF export routes at runtime.
+RUN test -s ./next.config.ts && test -s ./tsconfig.json && test -s ./prisma/schema.prisma \
+ && test -s ./docker-entrypoint.sh \
+ || (echo "ERROR: the build context delivered an empty file" && exit 1)
 RUN npx prisma generate && npm run build
 
 # --- runner ------------------------------------------------------------------
@@ -33,7 +39,9 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/next.config.ts ./next.config.ts
 COPY --from=builder /app/tsconfig.json ./tsconfig.json
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
-RUN chmod +x ./docker-entrypoint.sh
+# Guard against Windows CRLF line endings (a CRLF shebang makes Linux fail with
+# "exec format error") and make the script executable.
+RUN sed -i 's/\r$//' ./docker-entrypoint.sh && chmod +x ./docker-entrypoint.sh
 
 EXPOSE 3001
 
