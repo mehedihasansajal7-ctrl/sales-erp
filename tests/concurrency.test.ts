@@ -21,7 +21,7 @@ describe("Concurrency — parallel writes stay within the limits", () => {
   let ctx: Ctx;
 
   beforeAll(async () => {
-    ctx = await standardContext();
+    ctx = await standardContext({ partialDispatch: true });
     await prisma.customer.createMany({
       data: [
         { code: "CUS-CON1", name: "Concurrent Trader 1" },

@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable, DetailList, PageHeader, ProgressBar, StatusBadge } from "@/components/page-header";
 import { ConfirmActionDialog } from "@/components/forms/confirm-dialog";
+import { DoEditDialog } from "@/components/forms/do-edit-dialog";
 import { cancelDeliveryOrderAction } from "@/actions/delivery";
 
 export const dynamic = "force-dynamic";
@@ -58,16 +59,31 @@ export default async function DeliveryOrderDetailPage({
               </Link>
             </Button>
             {canCancel && deliveryOrder.status === "CREATED" ? (
-              <ConfirmActionDialog
-                action={cancelDeliveryOrderAction}
-                triggerLabel="Cancel DO"
-                triggerVariant="destructive"
-                title={`Cancel ${deliveryOrder.doNo}`}
-                description="Releases the reserved stock back to the warehouse. Only possible while nothing has been dispatched."
-                confirmLabel="Cancel delivery order"
-                fields={{ doId: deliveryOrder.id }}
-                requireReason
-              />
+              <>
+                <DoEditDialog
+                  doId={deliveryOrder.id}
+                  doNo={deliveryOrder.doNo}
+                  warehouseName={deliveryOrder.warehouseName}
+                  lines={deliveryOrder.items.map((item) => ({
+                    id: item.id,
+                    productName: item.productName,
+                    productCode: item.productCode,
+                    qtyMt: item.qtyMt,
+                    allocatableMt: item.allocatableMt,
+                    dispatchedMt: item.dispatchedMt,
+                  }))}
+                />
+                <ConfirmActionDialog
+                  action={cancelDeliveryOrderAction}
+                  triggerLabel="Cancel DO"
+                  triggerVariant="destructive"
+                  title={`Cancel ${deliveryOrder.doNo}`}
+                  description="Releases the reserved stock back to the warehouse. Only possible while nothing has been dispatched."
+                  confirmLabel="Cancel delivery order"
+                  fields={{ doId: deliveryOrder.id }}
+                  requireReason
+                />
+              </>
             ) : null}
           </>
         }

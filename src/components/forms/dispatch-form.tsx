@@ -16,19 +16,29 @@ export type DispatchLine = {
   remainingMt: string;
 };
 
-/** Rule 6 — the warehouse records a (possibly partial) dispatch against a DO. */
+/**
+ * Rule 6 — the warehouse records a dispatch against a DO.
+ *
+ * Who sets the quantity is a policy decision (Settings → "Warehouse may dispatch
+ * less than the DO quantity"):
+ *   * default (false): Sales Operations owns the quantity. The warehouse only
+ *     enters truck / driver / challan / dates and ships the full DO quantity.
+ *   * true: the warehouse may split a DO over several shipments (partial).
+ */
 export function DispatchForm({
   doId,
   doNo,
   lines,
   defaultLoadingDate,
   defaultDispatchDate,
+  allowPartial,
 }: {
   doId: string;
   doNo: string;
   lines: DispatchLine[];
   defaultLoadingDate: string;
   defaultDispatchDate: string;
+  allowPartial: boolean;
 }) {
   const { state, formAction, pending } = useActionForm(recordDispatchAction);
   const [quantities, setQuantities] = React.useState<Record<string, string>>(() =>
@@ -49,15 +59,27 @@ export function DispatchForm({
     if (dispatchDate.slice(0, 10) < value.slice(0, 10)) setDispatchDate(value);
   };
 
+  // The quantity is only user-editable when the setting allows partial dispatch.
+  const effectiveQty = (line: DispatchLine) =>
+    allowPartial ? (quantities[line.id] ?? "") : line.remainingMt;
+
   const payload = JSON.stringify(
-    Object.entries(quantities)
-      .filter(([, value]) => value !== "" && Number(value) > 0)
-      .map(([doItemId, qtyMt]) => ({ doItemId, qtyMt })),
+    lines
+      .map((line) => ({ doItemId: line.id, qtyMt: effectiveQty(line) }))
+      .filter((line) => line.qtyMt !== "" && Number(line.qtyMt) > 0),
   );
 
-  const overLine = lines.some((line) => Number(quantities[line.id] ?? 0) > Number(line.remainingMt));
-  const hasQuantity = Object.values(quantities).some((value) => Number(value) > 0);
-  const isPartial = lines.some((line) => Number(quantities[line.id] ?? 0) < Number(line.remainingMt));
+  const overLine =
+    allowPartial &&
+    lines.some((line) => Number(quantities[line.id] ?? 0) > Number(line.remainingMt));
+  const hasQuantity =
+    payload.length > 2 &&
+    (allowPartial
+      ? Object.values(quantities).some((value) => Number(value) > 0)
+      : lines.every((line) => Number(line.remainingMt) > 0));
+  const isPartial =
+    allowPartial &&
+    lines.some((line) => Number(quantities[line.id] ?? 0) < Number(line.remainingMt));
 
   return (
     <form action={formAction} className="flex flex-col gap-4">
@@ -133,17 +155,16 @@ export function DispatchForm({
 
       <Card>
         <CardHeader>
-          <CardTitle>Dispatched quantity</CardTitle>
+          <CardTitle>Quantity to dispatch</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Product</TableHead>
-                <TableHead className="text-right">DO qty</TableHead>
-                <TableHead className="text-right">Already dispatched</TableHead>
-                <TableHead className="text-right">Remaining</TableHead>
-                <TableHead className="w-40">Dispatch now (MT)</TableHead>
+                <TableHead className="text-right">DO qty (MT)</TableHead>
+                <TableHead className="text-right">Already dispatched (MT)</TableHead>
+                <TableHead className="text-right">Dispatch now (MT)</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -155,17 +176,20 @@ export function DispatchForm({
                   </TableCell>
                   <TableCell className="text-right tabular-nums">{line.qtyMt}</TableCell>
                   <TableCell className="text-right tabular-nums">{line.dispatchedMt}</TableCell>
-                  <TableCell className="text-right tabular-nums">{line.remainingMt}</TableCell>
-                  <TableCell>
-                    <Input
-                      aria-label={`Dispatch quantity for ${line.productName}`}
-                      inputMode="decimal"
-                      className="h-8"
-                      value={quantities[line.id] ?? ""}
-                      onChange={(event) =>
-                        setQuantities((current) => ({ ...current, [line.id]: event.target.value }))
-                      }
-                    />
+                  <TableCell className="text-right tabular-nums">
+                    {allowPartial ? (
+                      <Input
+                        aria-label={`Dispatch quantity for ${line.productName}`}
+                        inputMode="decimal"
+                        className="ml-auto h-8 w-32"
+                        value={quantities[line.id] ?? ""}
+                        onChange={(event) =>
+                          setQuantities((current) => ({ ...current, [line.id]: event.target.value }))
+                        }
+                      />
+                    ) : (
+                      <span className="font-semibold">{line.remainingMt}</span>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
@@ -177,15 +201,21 @@ export function DispatchForm({
           </Field>
 
           <p className="text-xs text-slate-500">
-            {isPartial
-              ? "A partial dispatch keeps the DO in PARTIALLY_DISPATCHED until the remaining quantity ships."
-              : "Full dispatch will complete the DO and update the order status automatically."}
+            {allowPartial
+              ? isPartial
+                ? "A partial dispatch keeps the DO in PARTIALLY_DISPATCHED until the remaining quantity ships."
+                : "Full dispatch will complete the DO and update the order status automatically."
+              : "Quantities are set by Sales Operations. You record the vehicle, driver, challan and dates, then dispatch the full DO. For a smaller shipment, ask Sales Operations to create a separate delivery order."}
           </p>
 
           <ActionFeedback state={state} />
 
           <div className="flex justify-end">
-            <SubmitButton pending={pending} variant="primary" disabled={!hasQuantity || overLine || dateInvalid}>
+            <SubmitButton
+              pending={pending}
+              variant="primary"
+              disabled={!hasQuantity || overLine || dateInvalid}
+            >
               Record dispatch
             </SubmitButton>
           </div>

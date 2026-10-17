@@ -21,7 +21,9 @@ describe("Rules 4, 5 and 6 — allocation, dispatch and reservation", () => {
   let ctx: Ctx;
 
   beforeAll(async () => {
-    ctx = await standardContext();
+    // These scenarios exercise partial dispatch explicitly, which is allowed when
+    // the "warehouse may dispatch less" setting is on (off by default in prod).
+    ctx = await standardContext({ partialDispatch: true });
   });
 
   it("scenario 5 — rejects a DO above the order's remaining quantity or the warehouse's available stock", async () => {

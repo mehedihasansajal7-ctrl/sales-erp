@@ -154,6 +154,7 @@ export async function saveSettingsAction(
     const input = settingsSchema.parse({
       credit_check_enabled: bool(formData, "credit_check_enabled") ? "true" : "false",
       priority_override_enabled: bool(formData, "priority_override_enabled") ? "true" : "false",
+      warehouse_partial_dispatch: bool(formData, "warehouse_partial_dispatch") ? "true" : "false",
       company_name: str(formData, "company_name"),
       company_address: str(formData, "company_address"),
       default_warehouse: str(formData, "default_warehouse"),

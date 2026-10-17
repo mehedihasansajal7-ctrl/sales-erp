@@ -369,6 +369,25 @@ export function SettingsForm({
         </div>
       </div>
 
+      <div className="flex items-start gap-3 rounded-md border border-slate-200 p-3">
+        <Checkbox
+          id="warehouse_partial_dispatch"
+          name="warehouse_partial_dispatch"
+          defaultChecked={settings.warehouse_partial_dispatch === "true"}
+        />
+        <div>
+          <Label htmlFor="warehouse_partial_dispatch">
+            Allow the warehouse to dispatch less than the DO quantity
+          </Label>
+          <p className="text-xs text-slate-500">
+            Off (default): the warehouse only records the vehicle, driver, challan and dates, and
+            dispatches the <strong>full</strong> DO quantity set by Sales Operations. For a smaller
+            shipment Sales Ops creates a separate delivery order. Turn this on only if your loading
+            really has to be split by the warehouse.
+          </p>
+        </div>
+      </div>
+
       <Field label="Company name" htmlFor="company_name" required>
         <Input id="company_name" name="company_name" defaultValue={settings.company_name} required />
       </Field>

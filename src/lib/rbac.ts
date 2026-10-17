@@ -25,6 +25,8 @@ export const PERMISSIONS = {
 
   // --- Delivery orders -----------------------------------------------------
   "do.create": ["SALES_OPS", "ADMIN"],
+  /// Correct the quantities of a DO while nothing has been dispatched yet.
+  "do.edit": ["SALES_OPS", "ADMIN"],
   "do.view.all": ["SALES_OPS", "MANAGEMENT", "ADMIN", "FINANCE"],
   "do.view.warehouse": ["WAREHOUSE"],
   "do.cancel": ["SALES_OPS", "ADMIN"],

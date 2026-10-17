@@ -62,15 +62,24 @@ export function toDoRow(deliveryOrder: DoWithRelations) {
     qtyMt: qty(doQty).toFixed(3),
     dispatchedMt: qty(dispatched).toFixed(3),
     remainingMt: qty(doQty.minus(dispatched)).toFixed(3),
-    items: deliveryOrder.items.map((item) => ({
-      id: item.id,
-      orderItemId: item.orderItemId,
-      productCode: item.productCode,
-      productName: item.product.name,
-      qtyMt: item.qtyMt.toFixed(3),
-      dispatchedMt: item.dispatchedMt.toFixed(3),
-      remainingMt: qty(dec(item.qtyMt).minus(dec(item.dispatchedMt))).toFixed(3),
-    })),
+    items: deliveryOrder.items.map((item) => {
+      // What the order can still allocate to this line, including this DO's own
+      // quantity (used by the "edit quantities" dialog).
+      const orderItem = deliveryOrder.order.items.find((row) => row.id === item.orderItemId);
+      const allocatable = orderItem
+        ? qty(dec(orderItem.qtyMt).minus(dec(orderItem.doAllocatedMt)).plus(dec(item.qtyMt))).toFixed(3)
+        : item.qtyMt.toFixed(3);
+      return {
+        id: item.id,
+        orderItemId: item.orderItemId,
+        productCode: item.productCode,
+        productName: item.product.name,
+        qtyMt: item.qtyMt.toFixed(3),
+        dispatchedMt: item.dispatchedMt.toFixed(3),
+        remainingMt: qty(dec(item.qtyMt).minus(dec(item.dispatchedMt))).toFixed(3),
+        allocatableMt: allocatable,
+      };
+    }),
   };
 }
 
@@ -441,6 +450,160 @@ export async function cancelDeliveryOrder(
           releasedItems: deliveryOrder.items.map((item) => ({
             product: item.productCode,
             qtyMt: item.qtyMt.toFixed(3),
+          })),
+        },
+      },
+      tx,
+    );
+
+    return toDoRow(updated);
+  }, TX_OPTIONS);
+}
+
+/**
+ * Sales Operations corrects the quantities of a delivery order **before anything
+ * has been dispatched**. The warehouse can never do this - it only records the
+ * vehicle / challan and dispatches the quantity Sales Ops decided.
+ *
+ * The reservation in the warehouse is adjusted atomically: the old reservation
+ * is released and the new one is taken (which re-checks availability), the
+ * order's allocation counter is updated and the change is audited.
+ */
+export type EditDoInput = {
+  doId: string;
+  reason: string;
+  items: { doItemId: string; qtyMt: string }[];
+};
+
+export async function editDeliveryOrderQuantity(
+  input: EditDoInput,
+  user: ServiceActor,
+  ip?: string,
+) {
+  return prisma.$transaction(async (tx) => {
+    const deliveryOrder = await tx.deliveryOrder.findUnique({
+      where: { id: input.doId },
+      include: { items: true, order: { include: { items: true, customer: true } } },
+    });
+    if (!deliveryOrder) throw errors.notFound("Delivery order");
+    if (deliveryOrder.status !== "CREATED") {
+      throw errors.conflict(
+        `The quantities of ${deliveryOrder.doNo} can only be changed while nothing has been dispatched (status is ${DO_STATUS_LABELS[deliveryOrder.status]}).`,
+      );
+    }
+
+    // Serialise with dispatch / cancellation for this customer and order.
+    await tx.$queryRaw`SELECT code FROM customers WHERE code = ${deliveryOrder.order.customerId} FOR UPDATE`;
+    await tx.$queryRaw`SELECT id FROM orders WHERE id = ${deliveryOrder.orderId} FOR UPDATE`;
+    await tx.$queryRaw`SELECT id FROM delivery_orders WHERE id = ${deliveryOrder.id} FOR UPDATE`;
+
+    const doItemsAfterLock = await tx.deliveryOrderItem.findMany({
+      where: { doId: deliveryOrder.id },
+    });
+    const doById = new Map(doItemsAfterLock.map((item) => [item.id, item]));
+    const orderItems = await tx.orderItem.findMany({ where: { orderId: deliveryOrder.orderId } });
+    const orderItemById = new Map(orderItems.map((item) => [item.id, item]));
+
+    const seen = new Set<string>();
+    const changes: { doItem: (typeof doItemsAfterLock)[number]; newQty: string }[] = [];
+
+    for (const line of input.items) {
+      if (seen.has(line.doItemId)) {
+        throw errors.validation("The same delivery order line was sent twice.");
+      }
+      seen.add(line.doItemId);
+      const doItem = doById.get(line.doItemId);
+      if (!doItem) throw errors.notFound("Delivery order line");
+
+      const newQty = qty(line.qtyMt);
+      if (!newQty.gt(0)) throw errors.validation("Quantity must be greater than zero.");
+      if (newQty.equals(dec(doItem.qtyMt))) continue;
+
+      const orderItem = orderItemById.get(doItem.orderItemId);
+      if (!orderItem) throw errors.notFound("Order line");
+
+      // What the order can still allocate once this DO's own allocation is freed.
+      const allocatable = dec(orderItem.qtyMt)
+        .minus(dec(orderItem.doAllocatedMt))
+        .plus(dec(doItem.qtyMt));
+      if (newQty.gt(allocatable)) {
+        throw errors.overAllocation(
+          `Order ${deliveryOrder.order.orderNo} line ${doItem.productCode}: only ${allocatable.toFixed(3)} MT can be allocated to this delivery order (requested ${newQty.toFixed(3)} MT).`,
+        );
+      }
+
+      changes.push({ doItem, newQty: newQty.toFixed(3) });
+    }
+
+    if (changes.length === 0) {
+      throw errors.validation("Nothing was changed, so the delivery order was left untouched.");
+    }
+
+    for (const { doItem, newQty } of changes) {
+      // Release the current reservation, then take the new one (re-checks stock).
+      await reserveStock(tx, {
+        warehouseCode: deliveryOrder.warehouseId,
+        productCode: doItem.productCode,
+        qtyMt: dec(doItem.qtyMt).negated(),
+        refType: "delivery_order",
+        refId: deliveryOrder.id,
+        note: `Quantity corrected on ${deliveryOrder.doNo}`,
+        userId: user.id,
+        userName: user.name,
+        ip,
+        auditAction: "UPDATE",
+      });
+      await reserveStock(tx, {
+        warehouseCode: deliveryOrder.warehouseId,
+        productCode: doItem.productCode,
+        qtyMt: newQty,
+        refType: "delivery_order",
+        refId: deliveryOrder.id,
+        note: `Quantity corrected on ${deliveryOrder.doNo}`,
+        userId: user.id,
+        userName: user.name,
+        ip,
+        auditAction: "UPDATE",
+      });
+
+      await tx.deliveryOrderItem.update({
+        where: { id: doItem.id },
+        data: { qtyMt: newQty },
+      });
+
+      const orderItem = await tx.orderItem.findUniqueOrThrow({ where: { id: doItem.orderItemId } });
+      await tx.orderItem.update({
+        where: { id: orderItem.id },
+        data: {
+          doAllocatedMt: qty(dec(orderItem.doAllocatedMt).minus(dec(doItem.qtyMt)).plus(newQty)).toFixed(3),
+        },
+      });
+    }
+
+    const updated = await tx.deliveryOrder.findUniqueOrThrow({
+      where: { id: deliveryOrder.id },
+      include: DO_INCLUDE,
+    });
+
+    await writeAudit(
+      {
+        ...actor(user, ip),
+        action: "UPDATE",
+        entity: "delivery_order",
+        entityId: deliveryOrder.id,
+        oldValue: {
+          items: doItemsAfterLock.map((item) => ({
+            product: item.productCode,
+            qtyMt: item.qtyMt.toFixed(3),
+          })),
+        },
+        newValue: {
+          doNo: deliveryOrder.doNo,
+          orderNo: deliveryOrder.order.orderNo,
+          reason: input.reason,
+          items: doItemsAfterLock.map((item) => ({
+            product: item.productCode,
+            qtyMt: changes.find((change) => change.doItem.id === item.id)?.newQty ?? item.qtyMt.toFixed(3),
           })),
         },
       },

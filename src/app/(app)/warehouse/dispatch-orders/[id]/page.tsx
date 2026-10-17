@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { requirePermission } from "@/lib/auth";
 import { formatDate, formatDateTime, toDateTimeLocalValue } from "@/lib/dates";
 import { getDeliveryOrder } from "@/server/services/delivery-order.service";
+import { getSettings, SETTING_KEYS } from "@/lib/settings";
 import { isAppError } from "@/lib/errors";
 import { formatMt, formatNumber } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -34,6 +35,8 @@ export default async function WarehouseDispatchOrderPage({
   }
 
   const open = deliveryOrder.status === "CREATED" || deliveryOrder.status === "PARTIALLY_DISPATCHED";
+  const settings = await getSettings();
+  const allowPartial = settings[SETTING_KEYS.warehousePartialDispatch] === "true";
 
   return (
     <div>
@@ -105,6 +108,7 @@ export default async function WarehouseDispatchOrderPage({
             }))}
             defaultLoadingDate={toDateTimeLocalValue()}
             defaultDispatchDate={toDateTimeLocalValue()}
+            allowPartial={allowPartial}
           />
         </div>
       ) : (

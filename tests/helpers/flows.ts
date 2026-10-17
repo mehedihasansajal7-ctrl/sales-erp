@@ -18,13 +18,24 @@ export type Ctx = {
 };
 
 /** Standard fixture: master data, users, opening stock and default rates. */
-export async function standardContext(options: { withStock?: boolean } = {}): Promise<Ctx> {
+export async function standardContext(
+  options: { withStock?: boolean; partialDispatch?: boolean } = {},
+): Promise<Ctx> {
   const fixtures = await seedBase();
   const { users } = fixtures;
 
   await publishRate("FERT-UREA", "50000.00", users.FINANCE!.id);
   await publishRate("COAL-IMPORT", "20000.00", users.FINANCE!.id);
   await publishRate("GRAIN-WHEAT", "40000.00", users.FINANCE!.id);
+
+  // Policy switches: by default the warehouse must ship the full DO quantity and
+  // only Sales Operations may change it. Tests that exercise partial dispatch
+  // (a supported but non-default policy) opt in explicitly.
+  const { setSetting, SETTING_KEYS } = await import("@/lib/settings");
+  await setSetting(
+    SETTING_KEYS.warehousePartialDispatch,
+    options.partialDispatch ? "true" : "false",
+  );
 
   if (options.withStock !== false) {
     await giveOpeningStock("WH-DHK", "FERT-UREA", "1000.000");

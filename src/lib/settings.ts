@@ -9,6 +9,12 @@ import type { Tx } from "@/lib/prisma";
 export const SETTING_KEYS = {
   creditCheckEnabled: "credit_check_enabled",
   priorityOverrideEnabled: "priority_override_enabled",
+  /**
+   * When false (default) the warehouse must dispatch the full DO quantity set by
+   * Sales Operations - it only records vehicle / challan details. Partial
+   * shipments then happen by Sales Ops creating a smaller DO.
+   */
+  warehousePartialDispatch: "warehouse_partial_dispatch",
   companyName: "company_name",
   companyAddress: "company_address",
   defaultWarehouse: "default_warehouse",
@@ -19,6 +25,7 @@ export type SettingKey = (typeof SETTING_KEYS)[keyof typeof SETTING_KEYS];
 const ENV_DEFAULTS: Record<string, string> = {
   [SETTING_KEYS.creditCheckEnabled]: process.env.CREDIT_CHECK_ENABLED ?? "true",
   [SETTING_KEYS.priorityOverrideEnabled]: process.env.PRIORITY_OVERRIDE_ENABLED ?? "true",
+  [SETTING_KEYS.warehousePartialDispatch]: process.env.WAREHOUSE_PARTIAL_DISPATCH ?? "false",
   [SETTING_KEYS.companyName]: "Bulk Commodity Trading Ltd.",
   [SETTING_KEYS.companyAddress]: "Dhaka, Bangladesh",
   [SETTING_KEYS.defaultWarehouse]: "",

@@ -183,6 +183,7 @@ export const userResetPasswordSchema = z.object({
 export const settingsSchema = z.object({
   credit_check_enabled: z.enum(["true", "false"]).default("true"),
   priority_override_enabled: z.enum(["true", "false"]).default("true"),
+  warehouse_partial_dispatch: z.enum(["true", "false"]).default("false"),
   company_name: trimmedString(2, 150),
   company_address: z.string().trim().max(300).default(""),
   default_warehouse: z
@@ -341,6 +342,23 @@ export const doCreateSchema = z
 export const doCancelSchema = z.object({
   doId: nonEmptyId,
   reason: trimmedString(3, 500),
+});
+
+/**
+ * Sales Operations may correct a delivery order's quantities while nothing has
+ * been dispatched yet. The reservation is adjusted and the change is audited.
+ */
+export const doEditSchema = z.object({
+  doId: nonEmptyId,
+  reason: trimmedString(3, 500),
+  items: z
+    .array(
+      z.object({
+        doItemId: nonEmptyId,
+        qtyMt: positiveQtySchema,
+      }),
+    )
+    .min(1, "A delivery order must keep at least one line."),
 });
 
 // ---------------------------------------------------------------------------

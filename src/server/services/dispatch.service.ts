@@ -5,6 +5,7 @@ import { errors } from "@/lib/errors";
 import { actor, writeAudit } from "@/lib/audit";
 import { toZonedDateString, zonedToUtc } from "@/lib/dates";
 import { assertDoTransition, assertOrderTransition, ORDER_STATUS_LABELS } from "@/lib/state-machines";
+import { getSettings, SETTING_KEYS } from "@/lib/settings";
 import { assertCustomerPriority } from "@/server/services/priority.service";
 import { dispatchOutStock } from "@/server/services/stock.service";
 import { toDoRow } from "@/server/services/delivery-order.service";
@@ -93,11 +94,24 @@ export async function recordDispatch(input: RecordDispatchInput, user: ServiceAc
       throw errors.validation("Enter a dispatched quantity greater than zero.");
     }
 
+    /**
+     * Who decides the quantity? Sales Operations does (it creates the DO).
+     * Unless the setting explicitly allows partial dispatch, the warehouse only
+     * records the vehicle/challan and must ship the exact DO quantity.
+     */
+    const allowPartial =
+      (await getSettings(tx))[SETTING_KEYS.warehousePartialDispatch] === "true";
+
     for (const { item, requested } of prepared) {
       const remaining = dec(item.qtyMt).minus(dec(item.dispatchedMt));
       if (requested.gt(remaining)) {
         throw errors.overDispatch(
           `${deliveryOrder.doNo} line ${item.productCode}: only ${remaining.toFixed(3)} MT is left to dispatch (requested ${requested.toFixed(3)} MT).`,
+        );
+      }
+      if (!allowPartial && !requested.equals(remaining)) {
+        throw errors.validation(
+          `The warehouse cannot change quantities. Dispatch the full ${remaining.toFixed(3)} MT of ${item.productCode}, or ask Sales Operations to split ${deliveryOrder.doNo} into a smaller delivery order.`,
         );
       }
     }

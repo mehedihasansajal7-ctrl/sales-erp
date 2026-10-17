@@ -3,8 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getClientIp, requirePermission } from "@/lib/auth";
-import { doCancelSchema, doCreateSchema, dispatchCreateSchema } from "@/lib/validation";
-import { cancelDeliveryOrder, createDeliveryOrder } from "@/server/services/delivery-order.service";
+import { doCancelSchema, doCreateSchema, doEditSchema, dispatchCreateSchema } from "@/lib/validation";
+import {
+  cancelDeliveryOrder,
+  createDeliveryOrder,
+  editDeliveryOrderQuantity,
+} from "@/server/services/delivery-order.service";
 import { recordDispatch } from "@/server/services/dispatch.service";
 import {
   readJsonField,
@@ -58,6 +62,45 @@ export async function createDeliveryOrderAction(
   redirect(`/sales-ops/delivery-orders/${createdId}?created=1`);
 }
 
+/**
+ * Sales Ops corrects the quantities of a DO before anything is dispatched.
+ * The warehouse can never do this.
+ */
+export async function editDeliveryOrderAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  try {
+    const user = await requirePermission("do.edit");
+    const input = doEditSchema.parse({
+      doId: str(formData, "doId"),
+      reason: str(formData, "reason"),
+      items: readJsonField<DoItemPayload>(formData, "payload", []),
+    });
+
+    const updated = await editDeliveryOrderQuantity(
+      input,
+      { id: user.id, name: user.name, role: user.role },
+      await getClientIp(),
+    );
+
+    revalidatePath("/sales-ops/delivery-orders");
+    revalidatePath(`/sales-ops/delivery-orders/${input.doId}`);
+    revalidatePath("/warehouse/dispatch-orders");
+    revalidatePath("/dashboard");
+
+    return actionOk(
+      `${updated.doNo} updated — ${updated.qtyMt} MT is now reserved in ${updated.warehouseName}.`,
+    );
+  } catch (error) {
+    return actionFailure(error);
+  }
+}
+
+/**
+ * Cancels a DO. Only possible while nothing has been dispatched; the reservation
+ * is released.
+ */
 export async function cancelDeliveryOrderAction(
   _prev: ActionState,
   formData: FormData,
