@@ -89,6 +89,13 @@ Each pending order is listed with the checks the brief requires:
 Press **Approve order**, or **Reject** (a reason is mandatory and shown to the salesperson).
 You can also **Override rate** on a line before approving (reason mandatory, audited).
 
+**Fixed a typo instead of rejecting?** Use **Edit order** (top-right of the card, or on the order
+detail). Sales Operations can correct the **quantity**, the **rate** and the **remarks** of a pending
+order — a missing zero, a wrong MT figure, a wrong instruction. A written reason is mandatory, the
+total is recalculated and every changed line is written to the audit trail. Only pending orders can be
+edited: once approved (or once a delivery order exists) the numbers are frozen. The customer and the
+product lines cannot be swapped — reject and recreate for that.
+
 ### 3.2 Priority queue — **Sales Ops → Priority queue**
 
 Per customer it shows the order **delivering now** and the orders **blocked behind it**, with the
@@ -107,8 +114,13 @@ remaining quantity of the blocker. Different customers never block each other.
    reason. It is recorded, audited and appears in the *Priority override* report.
 6. **Create delivery order & reserve stock** — the quantity is now **reserved** in that warehouse.
 
-From the DO detail you can **Print DO / PDF** and, while nothing has been dispatched, **Cancel DO**
-(the reservation is released).
+From the DO detail you can **Print DO / PDF** and, while nothing has been dispatched, **Edit
+quantities** (correct the amount — the warehouse reservation is adjusted automatically, a reason is
+mandatory and the change is audited) or **Cancel DO** (the reservation is released).
+
+> **The warehouse can never change these quantities.** It only records the vehicle, driver, challan
+> and dates, and dispatches exactly what Sales Operations decided. Need a smaller shipment? Create a
+> second DO for the balance.
 
 Other order actions on the order detail screen: **Cancel order** (only while nothing is delivered)
 and **Short close** (closes the remaining quantity with a reason and unblocks the customer's next
@@ -131,15 +143,22 @@ You only ever see **your own warehouse**. You cannot create or change a delivery
 
 1. Open a DO (or press **Dispatch** in the list). The screen shows the DO, its customer, the
    warehouse, the dispatch progress and (if one was granted) the priority override reason.
-2. Fill **Truck / vehicle number**, **Challan number** (must be unique), **Driver name**,
+2. **The quantity is not yours to change.** Sales Operations decides it when creating the delivery
+   order; the screen shows it (e.g. `30.000 MT`) read-only. For a smaller shipment, ask Sales
+   Operations to create a separate delivery order.
+3. Fill **Truck / vehicle number**, **Challan number** (must be unique), **Driver name**,
    **Driver phone**, **Loading date**, **Dispatch date**.
-3. Enter the **Dispatch now (MT)** per line. You may dispatch **partially**: the DO stays
-   `Partially dispatched` and the rest stays reserved for you.
+   * The **dispatch date can never be earlier than the loading date** — the picker will not offer an
+     earlier day, and the form blocks it.
 4. Press **Record dispatch**. The system re-checks the customer priority queue at this moment.
 
 What happens next: reserved stock is released, on-hand stock drops, the delivered quantity increases
-and the order moves to *Partially delivered* or *Completed*. The challan is available as a printable
-copy (**Challan** link, or **Print challan**).
+and the order moves to *Partially delivered* or *Completed* (depending on how much of the order this
+DO covered). The challan is available as a printable copy (**Challan** link, or **Print challan**).
+
+> If your business really needs the warehouse to split one DO over several trucks, an administrator can
+> switch on **Admin → Settings → “Allow the warehouse to dispatch less than the DO quantity”**. Then a
+> quantity box appears and partial dispatches are allowed again.
 
 If the dispatch is refused with *“Order ORD-… of this customer must be completed first”*, tell Sales
 Operations — only they can grant a priority override.

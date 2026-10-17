@@ -72,9 +72,9 @@ npm run dev                   # http://localhost:3001
 ```bash
 npm run lint         # ESLint (flat config, eslint-config-next)
 npm run typecheck    # tsc --noEmit, strict mode
-npm run test         # Vitest: 74 unit + integration + concurrency tests against real Postgres
+npm run test         # Vitest: 100 unit + integration + concurrency tests against real Postgres
 npm run build        # next build (Turbopack)
-npm run test:e2e     # Playwright journeys (needs `npx playwright install chromium` once)
+npm run test:e2e     # Playwright journeys (uses your installed Chrome/Edge via PW_CHANNEL)
 ```
 
 The integration tests create and migrate their **own** database (`sales_erp_test`) automatically —
@@ -115,7 +115,8 @@ SQL.
    dispatched can never exceed the DO quantity — also enforced by DB `CHECK` constraints.
 5. **Warehouse allocation** — Sales Ops chooses the warehouse; the system validates
    `available = on_hand − reserved`, blocks otherwise, and **reserves** the quantity. Cancelling a DO
-   releases the reservation; dispatching reduces `on_hand`.
+   releases the reservation; dispatching reduces `on_hand`. **Only Sales Operations may create or
+   change a DO quantity** (the warehouse sees it read-only).
 6. **Dispatch control** — a warehouse sees only its own DOs and cannot create a DO or change
    quantities. Duplicate challan numbers and over-dispatch are rejected. Partial dispatch keeps the
    DO in `PARTIALLY_DISPATCHED`.

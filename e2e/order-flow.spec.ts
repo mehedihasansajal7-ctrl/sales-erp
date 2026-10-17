@@ -72,6 +72,15 @@ test.describe("order lifecycle", () => {
     // the queue, so the disappearing card *is* the confirmation (a toast is fired
     // too, but the component unmounts as the list refreshes).
     const orderNo = (await page.getByRole("link", { name: /^ORD-\d{4}-\d{6}$/ }).first().innerText()).trim();
+
+    // If the customer is over its credit limit the button stays disabled until the
+    // Sales Ops override is ticked and a reason is written (Rule 2). The demo data
+    // grows on every run, so handle both cases.
+    if (await approveButton.isDisabled()) {
+      await page.getByLabel(/Override the credit limit/i).check();
+      await page.getByLabel(/Written reason/i).fill("E2E: credit limit override for the demo run");
+    }
+
     await approveButton.click();
 
     await expect(page.getByRole("link", { name: orderNo })).toHaveCount(0, { timeout: 20_000 });

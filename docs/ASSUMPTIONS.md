@@ -87,3 +87,12 @@ continue."* This is that record. Nothing here changes a stated business rule —
     one index that had only been created with raw SQL (`stock_ledger_created_at_desc_idx`). It was
     restored *and declared in `schema.prisma`* so Prisma manages it from now on; the CHECK constraints
     and the audit triggers live only in SQL and are intentionally invisible to Prisma.
+28. **Who owns a delivery quantity?** Sales Operations does. The warehouse form shows the DO quantity
+    read-only and the service refuses any other number, because the product owner wanted the warehouse
+    to record only the vehicle/challan and print the documents. `warehouse_partial_dispatch` (default
+    false) re-enables partial shipments for businesses that need them; the change is one checkbox in
+    Admin → Settings, no redeploy.
+29. **A DO can be edited, not just cancelled** — while nothing has been dispatched. The reservation is
+    released and re-taken atomically (re-checking availability), the order's allocation counter and the
+    audit trail follow. This is the only way to change a DO quantity; after the first dispatch the
+    numbers are frozen.

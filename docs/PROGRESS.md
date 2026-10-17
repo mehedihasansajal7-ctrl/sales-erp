@@ -90,13 +90,34 @@ verified (`lint` + `typecheck` + `test` + `build`) before moving on.
 
 ---
 
+## Post-build increments (2026-10-17, requested by the product owner)
+
+These were added after the initial hand-over, each verified with tests and in the running app.
+
+1. **Sales Ops can correct a pending order** (`order.editPending`) — quantity, rate and remarks, with a
+   mandatory reason and line-by-line audit. Prevents "reject and re-enter" for a simple typo.
+2. **Rate validity window** — `rates.effective_to` (optional). Default is unchanged: a rate stays
+   active until the next one is published; an explicit end date makes it expire automatically
+   (`RATE_EXPIRED`). Shown on Current rates, Rate history, the dashboard and the rate-history report.
+3. **Dispatch date rule** — the dispatch date can never be earlier than the loading date (same day is
+   fine). Enforced in the form (`min` + inline error), in Zod and in the service (Asia/Dhaka day).
+4. **Quantities belong to Sales Operations** — new setting `warehouse_partial_dispatch` (default
+   **false**): the warehouse records vehicle/challan/dates only and ships the full DO; a smaller
+   shipment is a smaller DO. `do.edit` lets Sales Ops correct a DO's quantities before dispatch
+   (reservation released and re-taken, audit + reason).
+5. **Bug fixed** — a DO could only be dispatched twice; the second partial shipment failed as
+   `PARTIALLY_DISPATCHED → PARTIALLY_DISPATCHED`. The DO and order rows are now re-read after their
+   `FOR UPDATE` locks, and a repeated "still partial" status is a no-op instead of a transition.
+6. **Bug fixed** — creating any non-warehouse user from the admin screen failed with a foreign-key
+   violation (empty string instead of `NULL`).
+
 ## Verification snapshot
 
 | Gate | Command | Result |
 |---|---|---|
 | Lint | `npm run lint` | PASS - clean (0 errors, 0 warnings) |
 | Types | `npm run typecheck` | PASS - clean (strict mode) |
-| Tests | `npm run test` | PASS - **74 / 74** across 9 files, against a real PostgreSQL |
+| Tests | `npm run test` | PASS - **100 / 100** across 12 files, against a real PostgreSQL |
 | Build | `npm run build` | PASS - all 38 routes compiled, no warnings |
 | E2E | `npm run test:e2e` | PASS - **13 / 13** journeys against the running container |
 | Docker | `docker compose config` | PASS - compose file validated (exit 0) |
