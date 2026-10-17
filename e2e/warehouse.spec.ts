@@ -31,13 +31,17 @@ test.describe("warehouse operations", () => {
   test("the warehouse can open a DO and fill the dispatch form", async ({ page }) => {
     await signIn(page, "warehouse.dhk@sales-erp.local", /\/warehouse\/dispatch-orders/);
 
-    const dispatchLink = page.getByRole("link", { name: "Dispatch" }).first();
+    // Scope to the page body: the sidebar also has a "Dispatch register" link.
+    const dispatchLink = page
+      .getByRole("main")
+      .getByRole("link", { name: "Dispatch", exact: true })
+      .first();
     if ((await dispatchLink.count()) === 0) {
       test.skip(true, "no open delivery order for this warehouse in the demo database");
     }
     await dispatchLink.click();
 
-    await expect(page.getByRole("heading", { name: /Dispatch — DO-/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Dispatch .* DO-/i })).toBeVisible();
     // The dispatch form is present for an open DO.
     await expect(page.getByLabel(/Truck \/ vehicle number/i)).toBeVisible();
     await expect(page.getByLabel(/Challan number/i)).toBeVisible();

@@ -94,42 +94,32 @@ verified (`lint` + `typecheck` + `test` + `build`) before moving on.
 
 | Gate | Command | Result |
 |---|---|---|
-| Lint | `npm run lint` | ✅ clean (0 errors, 0 warnings) |
-| Types | `npm run typecheck` | ✅ clean (strict mode) |
-| Tests | `npm run test` | ✅ **74 passed / 74** across 9 files (run against a real PostgreSQL) |
-| Build | `npm run build` | ✅ all 38 routes compiled with Turbopack |
-| E2E | `npm run test:e2e` | ⚠️ specs implemented (auth, order lifecycle, warehouse, exports). The first execution surfaced a Next 16 dev-origin restriction on `127.0.0.1`, which was fixed (`allowedDevOrigins` + `localhost` base URL); the confirmation run is pending a working database — see the note below. |
-| Docker | `docker compose config` | ✅ compose file validated (exit 0) |
-| Docker | `docker compose up --build` | ⚠️ **not verified on this machine** — see the note below. |
+| Lint | `npm run lint` | PASS - clean (0 errors, 0 warnings) |
+| Types | `npm run typecheck` | PASS - clean (strict mode) |
+| Tests | `npm run test` | PASS - **74 / 74** across 9 files, against a real PostgreSQL |
+| Build | `npm run build` | PASS - all 38 routes compiled, no warnings |
+| E2E | `npm run test:e2e` | PASS - **13 / 13** journeys against the running container |
+| Docker | `docker compose config` | PASS - compose file validated (exit 0) |
+| Docker | `docker compose up` | PASS - image builds, both services healthy, migrations and the idempotent seed run inside the container, `/api/health` returns `{"status":"ok","database":"up"}` |
 
-### Environment note (2026-10-15)
+### Verification notes (2026-10-17)
 
-Two environment failures happened on the build machine and are **not** code defects:
+Everything above was re-run after the last code change, on this machine, against the real database.
 
-1. **Drive `C:` ran out of space** (0 bytes free at the worst point). The image build needs
-   several GB, and Docker Desktop stores its data on `C:`. The build aborted with
-   `TAR_ENTRY_ERROR EIO` / `rpc error: code = Unavailable`.
-2. Docker Desktop then failed to restart —
-   `mounting WSL VHDX: Wsl/Service/AttachDisk/CreateVm/ERROR_TIMEOUT`. The existing images and
-   volumes (including the other projects' databases) are intact on disk; WSL simply could not
-   attach the data disk. A Windows restart (or a Docker Desktop repair) restores it.
-
-Everything that does **not** need the container engine was verified before and after the outage:
-lint, typecheck, the 74-test suite, the production build and `docker compose config`.
-
-**To finish verification after the machine is restarted:**
-
-```powershell
-# 1. space (the build needs several GB free on C:)
-docker system df ; docker builder prune -f
-
-# 2. the one-command start required by the Definition of Done
-docker compose up --build -d
-docker compose ps            # db + app must both be healthy
-curl http://localhost:3001/api/health
-
-# 3. quality gates against the bundled database
-npm run test                 # 74/74
-npm run test:e2e             # Playwright journeys (PW_CHANNEL=chrome|msedge picks a local browser)
-npm run seed:load            # 10 000 orders, then check the list/report screens stay fast
-```
+* **End-to-end walkthrough by hand (browser):** login -> dashboard (rates 18,500 / 45,000 / 39,000 BDT)
+  -> new order (rate locked live) -> approve (the four checks on screen) -> delivery order with
+  warehouse availability and the queue panel -> dispatch -> order `PARTIALLY_DELIVERED`.
+  Database cross-check: on-hand 5000 -> 4980 MT, `reserved` back to 0, ledger `RESERVE +20` /
+  `OUTWARD -20`, audit rows for CREATE / APPROVE / DISPATCH, challan unique. Printables returned 200
+  and the report exports produced a real `.xlsx` (PK magic, 7 283 B) and `.pdf` (%PDF, 2 113 B).
+* **Two UI defects were found and fixed during that walkthrough** (money printed without thousands
+  separators; `MT` repeated under headers that already say `(MT)`) - commit
+  "fix(ui): money values keep their thousands separators and quantity cells stop repeating MT".
+* **Docker build gotcha (Windows):** the build context once delivered **0-byte** copies of
+  `next.config.ts`, `tsconfig.json` and `docker-entrypoint.sh`. The image died with
+  `exec ./docker-entrypoint.sh: exec format error`, and an empty `next.config.ts` would have silently
+  dropped `serverExternalPackages` (breaking the Excel/PDF routes). The `Dockerfile` now fails the
+  build if those files arrive empty, and it strips CRLF from the entrypoint.
+* **Machine note:** `C:` kept filling up and took the Docker engine down with it. Docker's 9.3 GB data
+  disk was moved to `D:\docker\data` (`%LOCALAPPDATA%\Docker\wsl\disk` is a junction to it); all
+  images and volumes were preserved and `C:` now has about 10.6 GB free. See `HUMAN_TODO.md` section 6.

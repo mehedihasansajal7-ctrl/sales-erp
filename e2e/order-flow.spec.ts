@@ -68,8 +68,13 @@ test.describe("order lifecycle", () => {
     await expect(page.getByText(/Rate valid at order time/i).first()).toBeVisible();
     await expect(page.getByText(/Customer active/i).first()).toBeVisible();
 
+    // Remember which order is being approved: once it is approved the card leaves
+    // the queue, so the disappearing card *is* the confirmation (a toast is fired
+    // too, but the component unmounts as the list refreshes).
+    const orderNo = (await page.getByRole("link", { name: /^ORD-\d{4}-\d{6}$/ }).first().innerText()).trim();
     await approveButton.click();
-    await expect(page.getByText(/Order approved/i).first()).toBeVisible({ timeout: 20_000 });
+
+    await expect(page.getByRole("link", { name: orderNo })).toHaveCount(0, { timeout: 20_000 });
   });
 
   test("shows the customer priority queue with blockers", async ({ page }) => {
