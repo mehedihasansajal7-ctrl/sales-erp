@@ -16,6 +16,8 @@ export const PERMISSIONS = {
   "order.view.all": ["SALES_OPS", "MANAGEMENT", "ADMIN", "FINANCE"],
   "order.approve": ["SALES_OPS", "ADMIN"],
   "order.reject": ["SALES_OPS", "ADMIN"],
+  /// Correct the numbers (quantity / rate) of a pending order before approving it.
+  "order.editPending": ["SALES_OPS", "ADMIN"],
   "order.cancel": ["SALES_OPS", "ADMIN"],
   "order.shortClose": ["SALES_OPS", "ADMIN"],
   "order.overrideRate": ["SALES_OPS", "ADMIN"],

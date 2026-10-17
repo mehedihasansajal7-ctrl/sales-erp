@@ -9,7 +9,7 @@ import { formatBdt, formatMt, formatNumber, humanize } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable, DetailList, PageHeader, ProgressBar, StatusBadge, type Column } from "@/components/page-header";
-import { ApprovePanel, OverrideRateDialog } from "@/components/forms/order-actions";
+import { ApprovePanel, EditOrderDialog, OverrideRateDialog } from "@/components/forms/order-actions";
 import { ConfirmActionDialog } from "@/components/forms/confirm-dialog";
 import { isAppError } from "@/lib/errors";
 
@@ -63,6 +63,7 @@ export default async function OrderDetailPage({
   const canCancel = roleHasPermission(user.role, "order.cancel");
   const canShortClose = roleHasPermission(user.role, "order.shortClose");
   const canOverrideRate = roleHasPermission(user.role, "order.overrideRate");
+  const canEditPending = roleHasPermission(user.role, "order.editPending");
 
   const approval = order.status === "PENDING_APPROVAL" && canApprove
     ? await runApprovalChecks(order.id)
@@ -157,6 +158,20 @@ export default async function OrderDetailPage({
         actions={
           <>
             <StatusBadge status={order.status} label={order.statusLabel} />
+            {canEditPending && order.status === "PENDING_APPROVAL" ? (
+              <EditOrderDialog
+                orderId={order.id}
+                orderNo={order.orderNo}
+                remarks={order.remarks}
+                lines={order.items.map((item) => ({
+                  id: item.id,
+                  productName: item.productName,
+                  productCode: item.productCode,
+                  qtyMt: item.qtyMt,
+                  lockedRatePerMt: item.lockedRatePerMt,
+                }))}
+              />
+            ) : null}
             <Button asChild variant="outline" size="sm">
               <Link href={`/print/order/${order.id}`} target="_blank">
                 Print / PDF

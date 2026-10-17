@@ -278,6 +278,31 @@ export const rateOverrideSchema = z.object({
   reason: trimmedString(3, 500),
 });
 
+/**
+ * Sales Ops may correct a pending order (a quantity or a rate typo) instead of
+ * rejecting it and asking the salesperson to re-enter everything. A written
+ * reason is mandatory and the change is audited line by line.
+ */
+export const orderEditSchema = z.object({
+  orderId: nonEmptyId,
+  reason: trimmedString(3, 500),
+  remarks: z
+    .string()
+    .trim()
+    .max(500)
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
+  items: z
+    .array(
+      z.object({
+        orderItemId: nonEmptyId,
+        qtyMt: positiveQtySchema,
+        lockedRatePerMt: decimalField(MONEY_SCALE, "Rate", { positive: true }),
+      }),
+    )
+    .min(1, "The order must keep at least one line."),
+});
+
 // ---------------------------------------------------------------------------
 // Sales Ops — delivery orders
 // ---------------------------------------------------------------------------
@@ -322,33 +347,43 @@ export const doCancelSchema = z.object({
 // Warehouse — dispatch, stock
 // ---------------------------------------------------------------------------
 
-export const dispatchCreateSchema = z.object({
-  doId: nonEmptyId,
-  truckNo: trimmedString(2, 60),
-  driverName: trimmedString(2, 120),
-  driverPhone: z
-    .string()
-    .trim()
-    .min(6, "Enter a valid driver phone number.")
-    .max(30, "Enter a valid driver phone number."),
-  challanNo: trimmedString(1, 60),
-  loadingDate: zonedDateTimeSchema,
-  dispatchDate: zonedDateTimeSchema,
-  remarks: z
-    .string()
-    .trim()
-    .max(500)
-    .optional()
-    .or(z.literal("").transform(() => undefined)),
-  items: z
-    .array(
-      z.object({
-        doItemId: nonEmptyId,
-        qtyMt: positiveQtySchema,
-      }),
-    )
-    .min(1, "Enter a dispatched quantity."),
-});
+export const dispatchCreateSchema = z
+  .object({
+    doId: nonEmptyId,
+    truckNo: trimmedString(2, 60),
+    driverName: trimmedString(2, 120),
+    driverPhone: z
+      .string()
+      .trim()
+      .min(6, "Enter a valid driver phone number.")
+      .max(30, "Enter a valid driver phone number."),
+    challanNo: trimmedString(1, 60),
+    loadingDate: zonedDateTimeSchema,
+    dispatchDate: zonedDateTimeSchema,
+    remarks: z
+      .string()
+      .trim()
+      .max(500)
+      .optional()
+      .or(z.literal("").transform(() => undefined)),
+    items: z
+      .array(
+        z.object({
+          doItemId: nonEmptyId,
+          qtyMt: positiveQtySchema,
+        }),
+      )
+      .min(1, "Enter a dispatched quantity."),
+  })
+  /**
+   * A vehicle cannot be dispatched before it was loaded. The rule is applied at
+   * day level (loading 08:00 → dispatch 06:00 on the same day is fine), and the
+   * form never offers an earlier day.
+   */
+  .refine((value) => value.dispatchDate.slice(0, 10) >= value.loadingDate.slice(0, 10), {
+    message: "Dispatch date cannot be earlier than the loading date.",
+    path: ["dispatchDate"],
+  });
 
 export const stockOpeningSchema = z.object({
   warehouseCode: nonEmptyId,

@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/form";
 import { PageHeader, StatusBadge } from "@/components/page-header";
 import { ApprovePanel } from "@/components/forms/order-actions";
+import { EditOrderDialog } from "@/components/forms/order-actions";
 import { FilterBar } from "@/components/page-header";
 
 export const dynamic = "force-dynamic";
@@ -74,6 +75,20 @@ export default async function ApprovalsPage({
                   <p className="text-xs text-slate-500">
                     {formatMt(order.orderedMt)} · {order.items.length} line(s)
                   </p>
+                  <div className="mt-2 flex justify-end">
+                    <EditOrderDialog
+                      orderId={order.id}
+                      orderNo={order.orderNo}
+                      remarks={order.remarks}
+                      lines={order.items.map((item) => ({
+                        id: item.id,
+                        productName: item.productName,
+                        productCode: item.productCode,
+                        qtyMt: item.qtyMt,
+                        lockedRatePerMt: item.lockedRatePerMt,
+                      }))}
+                    />
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="flex flex-col gap-4">

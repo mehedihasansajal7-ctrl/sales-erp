@@ -15,6 +15,7 @@ import {
   approveOrder,
   cancelOrder,
   createOrder,
+  editPendingOrder,
   overrideOrderItemRate,
   rejectOrder,
   shortCloseOrder,
@@ -22,6 +23,7 @@ import {
 import { readJsonField, actionFailure, actionOk, str, type ActionState } from "@/actions/helpers";
 
 type ItemPayload = { productCode: string; qtyMt: string }[];
+type EditPayload = { orderItemId: string; qtyMt: string; lockedRatePerMt: string }[];
 
 /** Sales creates an order — the rate is copied and locked at creation (Rule 1). */
 export async function createOrderAction(
@@ -53,6 +55,42 @@ export async function createOrderAction(
   }
 
   redirect(`/sales/orders/${createdId}?created=1`);
+}
+
+/**
+ * Sales Ops corrects a pending order (quantity / rate typo) instead of rejecting
+ * it and asking the salesperson to re-enter everything. Reason is mandatory.
+ */
+export async function editPendingOrderAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  try {
+    const user = await requirePermission("order.editPending");
+    const { orderEditSchema } = await import("@/lib/validation");
+    const input = orderEditSchema.parse({
+      orderId: str(formData, "orderId"),
+      reason: str(formData, "reason"),
+      remarks: str(formData, "remarks"),
+      items: readJsonField<EditPayload>(formData, "payload", []),
+    });
+
+    const result = await editPendingOrder(
+      input,
+      { id: user.id, name: user.name, role: user.role },
+      await getClientIp(),
+    );
+
+    revalidatePath("/sales-ops/approvals");
+    revalidatePath("/sales/orders");
+    revalidatePath(`/sales/orders/${input.orderId}`);
+
+    return actionOk(
+      `Order ${result.order.orderNo} updated — ${result.changedLines} line(s) corrected, new total ৳${result.order.totalValue}.`,
+    );
+  } catch (error) {
+    return actionFailure(error);
+  }
 }
 
 export async function approveOrderAction(

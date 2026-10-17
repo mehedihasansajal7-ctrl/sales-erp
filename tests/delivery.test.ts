@@ -165,6 +165,68 @@ describe("Rules 4, 5 and 6 — allocation, dispatch and reservation", () => {
     expect(Number(afterDispatch.onHandMt)).toBe(Number(before.onHandMt) - 30);
   });
 
+  it("never allows a dispatch date earlier than the loading date (Rule 6)", async () => {
+    await prisma.customer.create({ data: { code: "CUS-DATE", name: "Date Trader" } });
+    const order = await createApprovedOrder(ctx, "CUS-DATE", [
+      { productCode: "FERT-UREA", qtyMt: "10.000" },
+    ]);
+    const items = await orderItemsOf(order.id);
+    const createResult = await createDo(ctx, order.id, "WH-DHK", [
+      { orderItemId: items[0]!.id, qtyMt: "10.000" },
+    ]);
+    const doItems = await doItemsOf(createResult.deliveryOrder.id);
+    const { recordDispatch } = await import("@/server/services/dispatch.service");
+    const warehouseActor = {
+      id: ctx.warehouse.id,
+      name: ctx.warehouse.name,
+      role: "WAREHOUSE" as const,
+      warehouseCode: "WH-DHK",
+    };
+
+    const today = new Date();
+    const yesterday = new Date(today.getTime() - 86_400_000);
+    const base = {
+      doId: createResult.deliveryOrder.id,
+      truckNo: "T-1",
+      driverName: "Date Driver",
+      driverPhone: "01711-000000",
+      challanNo: "CH-DATE-1",
+      loadingDate: today.toISOString(),
+      dispatchDate: yesterday.toISOString(),
+      items: [{ doItemId: doItems[0]!.id, qtyMt: "1.000" }],
+    };
+
+    // A previous day is refused and nothing is written.
+    await expect(recordDispatch(base, warehouseActor)).rejects.toThrowError(
+      /cannot be earlier than the loading date/,
+    );
+    expect(await prisma.dispatch.count({ where: { doId: base.doId } })).toBe(0);
+
+    // The same day is fine (loading in the morning, dispatch in the afternoon).
+    const sameDay = await recordDispatch(
+      {
+        ...base,
+        challanNo: "CH-DATE-2",
+        loadingDate: new Date(today.getTime() - 2 * 3600_000).toISOString(),
+        dispatchDate: today.toISOString(),
+      },
+      warehouseActor,
+    );
+    expect(sameDay.dispatch.challanNo).toBe("CH-DATE-2");
+
+    // The next day is fine as well.
+    const nextDay = await recordDispatch(
+      {
+        ...base,
+        challanNo: "CH-DATE-3",
+        dispatchDate: new Date(today.getTime() + 86_400_000).toISOString(),
+        items: [{ doItemId: doItems[0]!.id, qtyMt: "1.000" }],
+      },
+      warehouseActor,
+    );
+    expect(nextDay.dispatch.challanNo).toBe("CH-DATE-3");
+  });
+
   it("never exceeds the order quantity: DB CHECK constraints block a manipulated row", async () => {
     await prisma.customer.create({ data: { code: "CUS-CHK", name: "Constraint Trader" } });
     const order = await createApprovedOrder(ctx, "CUS-CHK", [

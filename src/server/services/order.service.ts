@@ -840,8 +840,147 @@ export async function overrideOrderItemRate(
   }, TX_OPTIONS);
 }
 
-/** Orders waiting for approval, oldest first (Sales Ops approval queue). */
-export async function approvalQueue(filters: { q?: string; customerCode?: string } = {}) {
+/**
+ * Corrects a **pending** order before it is approved (a missing zero in the
+ * rate, a wrong MT quantity, wrong remarks). Sales Ops no longer has to reject
+ * the order and make the salesperson re-enter it.
+ *
+ * Deliberately limited:
+ *   * only while the order is PENDING_APPROVAL - once approved a DO may exist
+ *     and its reserved quantity must stay consistent;
+ *   * customer and product lines cannot be swapped (that changes the priority
+ *     queue) - reject and recreate for a structural mistake;
+ *   * a written reason is mandatory and every changed line is audited.
+ */
+export type EditPendingOrderInput = {
+  orderId: string;
+  reason: string;
+  remarks?: string;
+  items: { orderItemId: string; qtyMt: string; lockedRatePerMt: string }[];
+};
+
+export async function editPendingOrder(
+  input: EditPendingOrderInput,
+  user: ServiceActor,
+  ip?: string,
+) {
+  return prisma.$transaction(async (tx) => {
+    const order = await tx.order.findUnique({
+      where: { id: input.orderId },
+      include: { items: true, customer: true },
+    });
+    if (!order) throw errors.notFound("Order");
+    if (order.status !== "PENDING_APPROVAL") {
+      throw errors.conflict(
+        `Only a pending order can be edited. ${order.orderNo} is ${ORDER_STATUS_LABELS[order.status]}.`,
+      );
+    }
+
+    const byId = new Map(order.items.map((item) => [item.id, item]));
+    const seen = new Set<string>();
+    const changes: {
+      item: (typeof order.items)[number];
+      qtyMt: string;
+      ratePerMt: string;
+      lineValue: string;
+    }[] = [];
+
+    for (const line of input.items) {
+      if (seen.has(line.orderItemId)) {
+        throw errors.validation("The same order line was sent twice.");
+      }
+      seen.add(line.orderItemId);
+      const item = byId.get(line.orderItemId);
+      if (!item) throw errors.notFound("Order line");
+
+      const newQty = qty(line.qtyMt);
+      const newRate = money(line.lockedRatePerMt);
+      if (!newQty.gt(0)) throw errors.validation("Quantity must be greater than zero.");
+      if (!newRate.gt(0)) throw errors.validation("Rate must be greater than zero.");
+
+      const qtyChanged = !newQty.equals(dec(item.qtyMt));
+      const rateChanged = !newRate.equals(dec(item.lockedRatePerMt));
+      if (!qtyChanged && !rateChanged) continue;
+
+      changes.push({
+        item,
+        qtyMt: newQty.toFixed(3),
+        ratePerMt: newRate.toFixed(2),
+        lineValue: money(newQty.mul(newRate)).toFixed(2),
+      });
+    }
+
+    const remarks = input.remarks !== undefined ? input.remarks : order.remarks ?? undefined;
+    const remarksChanged = (remarks ?? null) !== (order.remarks ?? null);
+
+    if (changes.length === 0 && !remarksChanged) {
+      throw errors.validation("Nothing was changed, so the order was left untouched.");
+    }
+
+    for (const change of changes) {
+      await tx.orderItem.update({
+        where: { id: change.item.id },
+        data: {
+          qtyMt: change.qtyMt,
+          lockedRatePerMt: change.ratePerMt,
+          lineValue: change.lineValue,
+          // A corrected rate is still a deliberate departure from the published
+          // rate, so it keeps the same "overridden" marker and reason.
+          ...(change.ratePerMt !== change.item.lockedRatePerMt.toFixed(2)
+            ? { rateOverridden: true, overrideReason: input.reason }
+            : {}),
+        },
+      });
+    }
+
+    const itemsAfter = await tx.orderItem.findMany({ where: { orderId: order.id } });
+    const totalValue = itemsAfter
+      .reduce((acc, line) => acc.plus(dec(line.lineValue)), dec(0))
+      .toFixed(2);
+
+    const updated = await tx.order.update({
+      where: { id: order.id },
+      data: { totalValue, remarks: remarks ?? null },
+      include: { items: { include: { product: true } }, customer: true },
+    });
+
+    await writeAudit(
+      {
+        ...actor(user, ip),
+        action: "UPDATE",
+        entity: "order",
+        entityId: order.id,
+        oldValue: {
+          totalValue: order.totalValue.toFixed(2),
+          remarks: order.remarks,
+          items: order.items.map((item) => ({
+            product: item.productCode,
+            qtyMt: item.qtyMt.toFixed(3),
+            ratePerMt: item.lockedRatePerMt.toFixed(2),
+            lineValue: item.lineValue.toFixed(2),
+          })),
+        },
+        newValue: {
+          totalValue,
+          remarks: remarks ?? null,
+          reason: input.reason,
+          items: itemsAfter.map((item) => ({
+            product: item.productCode,
+            qtyMt: item.qtyMt.toFixed(3),
+            ratePerMt: item.lockedRatePerMt.toFixed(2),
+            lineValue: item.lineValue.toFixed(2),
+          })),
+          changedLines: changes.length,
+        },
+      },
+      tx,
+    );
+
+    return { order: toOrderRow(updated), changedLines: changes.length, remarksChanged };
+  }, TX_OPTIONS);
+}
+
+/** Orders waiting for approval, oldest first (Sales Ops approval queue). */export async function approvalQueue(filters: { q?: string; customerCode?: string } = {}) {
   const orders = await prisma.order.findMany({
     where: {
       status: "PENDING_APPROVAL",

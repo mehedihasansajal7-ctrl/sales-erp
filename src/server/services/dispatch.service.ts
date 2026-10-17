@@ -3,7 +3,7 @@ import prisma, { type Tx } from "@/lib/prisma";
 import { dec, qty } from "@/lib/decimal";
 import { errors } from "@/lib/errors";
 import { actor, writeAudit } from "@/lib/audit";
-import { zonedToUtc } from "@/lib/dates";
+import { toZonedDateString, zonedToUtc } from "@/lib/dates";
 import { assertDoTransition, assertOrderTransition, ORDER_STATUS_LABELS } from "@/lib/state-machines";
 import { assertCustomerPriority } from "@/server/services/priority.service";
 import { dispatchOutStock } from "@/server/services/stock.service";
@@ -105,6 +105,17 @@ export async function recordDispatch(input: RecordDispatchInput, user: ServiceAc
     const loadingDate = zonedToUtc(input.loadingDate);
     const dispatchDate = zonedToUtc(input.dispatchDate);
 
+    // Rule 6 — a vehicle cannot leave before it was loaded. Compared by calendar
+    // day in APP_TIMEZONE, so loading 08:00 and dispatching 06:00 the same day is
+    // allowed, but the previous day never is.
+    const loadingDay = toZonedDateString(loadingDate);
+    const dispatchDay = toZonedDateString(dispatchDate);
+    if (dispatchDay < loadingDay) {
+      throw errors.validation(
+        `Dispatch date (${dispatchDay}) cannot be earlier than the loading date (${loadingDay}).`,
+      );
+    }
+
     const dispatch = await tx.dispatch.create({
       data: {
         doId: deliveryOrder.id,
@@ -164,12 +175,21 @@ export async function recordDispatch(input: RecordDispatchInput, user: ServiceAc
     }
 
     // --- DO status ---------------------------------------------------------
+    // Re-read the row now that it is locked: the first read happened before the
+    // locks, so its status may be stale (a previous dispatch may have moved it).
+    const doAfterLock = await tx.deliveryOrder.findUniqueOrThrow({
+      where: { id: deliveryOrder.id },
+    });
     const doItemsAfter = await tx.deliveryOrderItem.findMany({ where: { doId: deliveryOrder.id } });
     const fullyDispatched = doItemsAfter.every((item) =>
       dec(item.dispatchedMt).gte(dec(item.qtyMt)),
     );
     const newDoStatus = fullyDispatched ? "DISPATCHED" : "PARTIALLY_DISPATCHED";
-    assertDoTransition(deliveryOrder.status, newDoStatus);
+    // Staying in PARTIALLY_DISPATCHED across several shipments is normal, not an
+    // illegal transition - only a real status *change* has to be validated.
+    if (newDoStatus !== doAfterLock.status) {
+      assertDoTransition(doAfterLock.status, newDoStatus);
+    }
 
     const updatedDo = await tx.deliveryOrder.update({
       where: { id: deliveryOrder.id },
@@ -183,13 +203,21 @@ export async function recordDispatch(input: RecordDispatchInput, user: ServiceAc
     });
 
     // --- Order status (Rule 4 — partial delivery across many DOs/warehouses)
+    // Same as the DO: read the order after it has been locked so the transition
+    // is checked against the real current status, and treat "still partial" as a
+    // normal repeat rather than an illegal move.
+    const orderAfterLock = await tx.order.findUniqueOrThrow({
+      where: { id: deliveryOrder.orderId },
+    });
     const orderItems = await tx.orderItem.findMany({ where: { orderId: deliveryOrder.orderId } });
     const remaining = orderItems.reduce(
       (acc, item) => acc.plus(dec(item.qtyMt).minus(dec(item.deliveredMt))),
       dec(0),
     );
     const newOrderStatus = remaining.gt(0) ? "PARTIALLY_DELIVERED" : "COMPLETED";
-    assertOrderTransition(deliveryOrder.order.status, newOrderStatus);
+    if (newOrderStatus !== orderAfterLock.status) {
+      assertOrderTransition(orderAfterLock.status, newOrderStatus);
+    }
 
     await tx.order.update({
       where: { id: deliveryOrder.orderId },
@@ -202,7 +230,7 @@ export async function recordDispatch(input: RecordDispatchInput, user: ServiceAc
         action: "DISPATCH",
         entity: "dispatch",
         entityId: dispatch.id,
-        oldValue: { doStatus: deliveryOrder.status, orderStatus: deliveryOrder.order.status },
+        oldValue: { doStatus: doAfterLock.status, orderStatus: orderAfterLock.status },
         newValue: {
           doNo: deliveryOrder.doNo,
           orderNo: deliveryOrder.order.orderNo,

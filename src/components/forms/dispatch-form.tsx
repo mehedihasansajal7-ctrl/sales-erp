@@ -34,6 +34,20 @@ export function DispatchForm({
   const [quantities, setQuantities] = React.useState<Record<string, string>>(() =>
     Object.fromEntries(lines.map((line) => [line.id, line.remainingMt])),
   );
+  const [loadingDate, setLoadingDate] = React.useState(defaultLoadingDate);
+  const [dispatchDate, setDispatchDate] = React.useState(defaultDispatchDate);
+
+  // Rule 6 — never dispatch before loading. Compared at day level: same day is
+  // fine (loading 08:00 → dispatch 06:00), the previous day never is.
+  const loadingDay = loadingDate.slice(0, 10);
+  const dispatchDay = dispatchDate.slice(0, 10);
+  const dateInvalid = Boolean(loadingDay && dispatchDay) && dispatchDay < loadingDay;
+
+  const onLoadingChange = (value: string) => {
+    setLoadingDate(value);
+    // Keep the pair valid: if the loading day moves past the dispatch day, move it too.
+    if (dispatchDate.slice(0, 10) < value.slice(0, 10)) setDispatchDate(value);
+  };
 
   const payload = JSON.stringify(
     Object.entries(quantities)
@@ -86,18 +100,33 @@ export function DispatchForm({
               id="loadingDate"
               name="loadingDate"
               type="datetime-local"
-              defaultValue={defaultLoadingDate}
+              value={loadingDate}
+              onChange={(event) => onLoadingChange(event.target.value)}
               required
             />
           </Field>
-          <Field label="Dispatch date" htmlFor="dispatchDate" required>
+          <Field
+            label="Dispatch date"
+            htmlFor="dispatchDate"
+            hint="Same day as loading or later. An earlier day is not allowed."
+            required
+          >
             <Input
               id="dispatchDate"
               name="dispatchDate"
               type="datetime-local"
-              defaultValue={defaultDispatchDate}
+              value={dispatchDate}
+              min={loadingDay ? `${loadingDay}T00:00` : undefined}
+              aria-invalid={dateInvalid}
+              onChange={(event) => setDispatchDate(event.target.value)}
               required
             />
+            {dateInvalid ? (
+              <p role="alert" className="text-xs font-medium text-red-600">
+                Dispatch date cannot be earlier than the loading date ({loadingDay}).
+              </p>
+            ) : null}
+            <FieldError state={state} name="dispatchDate" />
           </Field>
         </CardContent>
       </Card>
@@ -156,7 +185,7 @@ export function DispatchForm({
           <ActionFeedback state={state} />
 
           <div className="flex justify-end">
-            <SubmitButton pending={pending} variant="primary" disabled={!hasQuantity || overLine}>
+            <SubmitButton pending={pending} variant="primary" disabled={!hasQuantity || overLine || dateInvalid}>
               Record dispatch
             </SubmitButton>
           </div>
