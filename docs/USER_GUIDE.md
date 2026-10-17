@@ -201,20 +201,22 @@ You can open every dashboard and report and nothing else changes:
 Twelve reports, all filterable by date range, warehouse, customer and product, all exportable:
 
 1. Order balance report
-2. Customer-wise sales & delivery
-3. Product-wise sales
+2. Customer-wise sales & delivery — **Breakdown: Customer only (totals) or Customer → Product** (what
+   each customer bought, per product)
+3. Product-wise sales — **Breakdown: Product only (totals) or Product → Customer** (who bought each
+   product)
 4. Pending delivery order report
 5. Warehouse stock ledger
 6. Stock summary (opening → closing, reserved, available)
 7. Stock difference (physical vs system, with reasons)
-8. Daily rate change history
+8. Daily rate change history (with the validity window of every rate)
 9. Delivery / dispatch register
 10. Priority override report
 11. Customer priority queue
 12. Salesperson performance
 
 Each report page has **Export Excel**, **Export PDF** and **CSV** buttons that download exactly what
-is on screen (same columns, same totals).
+is on screen — including the chosen breakdown.
 
 ---
 

@@ -51,6 +51,14 @@ export default async function ReportPage({
   const report = getReport(key);
   const filterNote = `${toZonedDateString(from)} → ${toZonedDateString(endOfTo)}`;
 
+  // Optional report options (e.g. the customer/product breakdown) come from the
+  // same query string, so the screen, the exports and the filtered links agree.
+  const reportOptions: Record<string, string> = {};
+  for (const option of report.options ?? []) {
+    const value = get(option.key);
+    if (value) reportOptions[option.key] = value;
+  }
+
   const [rows, warehouses, customers, products] = await Promise.all([
     report.run(
       {
@@ -59,6 +67,7 @@ export default async function ReportPage({
         warehouseCode: get("warehouseCode"),
         customerCode: get("customerCode"),
         productCode: get("productCode"),
+        options: reportOptions,
       },
       { id: user.id, name: user.name, role: user.role, warehouseCode: user.warehouseId },
     ),
@@ -73,6 +82,7 @@ export default async function ReportPage({
     ...(get("warehouseCode") ? { warehouseCode: get("warehouseCode") as string } : {}),
     ...(get("customerCode") ? { customerCode: get("customerCode") as string } : {}),
     ...(get("productCode") ? { productCode: get("productCode") as string } : {}),
+    ...reportOptions,
   });
 
   const columns: Column<Record<string, string>>[] = report.columns.map((column) => ({
@@ -216,6 +226,25 @@ export default async function ReportPage({
                 ))}
               </select>
             </div>
+            {(report.options ?? []).map((option) => (
+              <div key={option.key} className="flex flex-col gap-1">
+                <label htmlFor={option.key} className="text-xs font-medium text-slate-500">
+                  {option.label}
+                </label>
+                <select
+                  id={option.key}
+                  name={option.key}
+                  defaultValue={get(option.key) ?? option.choices[0]?.value ?? ""}
+                  className="h-9 rounded-md border border-slate-300 px-3 text-sm"
+                >
+                  {option.choices.map((choice) => (
+                    <option key={choice.value} value={choice.value}>
+                      {choice.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ))}
             <Button type="submit" variant="secondary">
               Run report
             </Button>

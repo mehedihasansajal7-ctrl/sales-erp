@@ -41,6 +41,8 @@ export type ReportDefinition = {
   title: string;
   description: string;
   columns: ReportColumn[];
+  /** Extra selects rendered in the filter bar (e.g. a breakdown / grouping). */
+  options?: { key: string; label: string; choices: { value: string; label: string }[] }[];
   run: (filter: ReportFilter, user: ServiceActor) => Promise<ReportRow[]>;
 };
 
@@ -118,10 +120,22 @@ const orderBalance: ReportDefinition = {
 const customerSales: ReportDefinition = {
   key: "customer-sales",
   title: "Customer-wise sales & delivery",
-  description: "Order count, value and delivered quantity per customer.",
+  description:
+    "Order count, value and delivered quantity per customer — optionally broken down by product.",
+  options: [
+    {
+      key: "groupBy",
+      label: "Breakdown",
+      choices: [
+        { value: "customer", label: "Customer only (totals)" },
+        { value: "product", label: "Customer → Product" },
+      ],
+    },
+  ],
   columns: [
     { key: "customerCode", label: "Code" },
     { key: "customerName", label: "Customer" },
+    { key: "productName", label: "Product" },
     { key: "orderCount", label: "Orders", kind: "number", align: "right" },
     { key: "orderedMt", label: "Ordered (MT)", kind: "mt", align: "right" },
     { key: "deliveredMt", label: "Delivered (MT)", kind: "mt", align: "right" },
@@ -129,59 +143,95 @@ const customerSales: ReportDefinition = {
     { key: "orderValue", label: "Order value (৳)", kind: "money", align: "right" },
   ],
   async run(filter, user) {
+    const byProduct = filter.options?.groupBy === "product";
     const orders = await prisma.order.findMany({
       where: {
         orderDate: { gte: filter.from, lte: filter.to },
         ...(user.role === "SALES" ? { createdBy: user.id } : {}),
         ...(filter.customerCode ? { customerId: filter.customerCode } : {}),
+        ...(filter.productCode ? { items: { some: { productCode: filter.productCode } } } : {}),
       },
-      include: { items: true, customer: true },
+      include: { items: { include: { product: true } }, customer: true },
     });
 
-    const map = new Map<
-      string,
-      {
-        row: ReportRow;
-        sort: number;
-      }
-    >();
+    const map = new Map<string, { row: ReportRow; sort: number }>();
+    const blank = (customerCode: string, customerName: string, productName: string): ReportRow => ({
+      customerCode,
+      customerName,
+      productName,
+      orderCount: "0",
+      orderedMt: "0.000",
+      deliveredMt: "0.000",
+      remainingMt: "0.000",
+      orderValue: "0.00",
+    });
+
     for (const order of orders) {
-      const entry =
-        map.get(order.customerId) ??
-        {
-          row: {
-            customerCode: order.customerId,
-            customerName: order.customer.name,
-            orderCount: "0",
-            orderedMt: "0.000",
-            deliveredMt: "0.000",
-            remainingMt: "0.000",
-            orderValue: "0.00",
-          },
-          sort: 0,
-        };
-      entry.row.orderCount = String(Number(entry.row.orderCount) + 1);
-      entry.row.orderValue = money(dec(entry.row.orderValue).plus(dec(order.totalValue))).toFixed(2);
-      entry.sort = Number(entry.row.orderValue);
-      for (const item of order.items) {
-        entry.row.orderedMt = qty(dec(entry.row.orderedMt).plus(dec(item.qtyMt))).toFixed(3);
-        entry.row.deliveredMt = qty(dec(entry.row.deliveredMt).plus(dec(item.deliveredMt))).toFixed(3);
+      if (byProduct) {
+        // One row per (customer, product) — answers "what did this customer buy?".
+        for (const item of order.items) {
+          if (filter.productCode && item.productCode !== filter.productCode) continue;
+          const key = `${order.customerId}|${item.productCode}`;
+          const entry =
+            map.get(key) ?? { row: blank(order.customerId, order.customer.name, item.product.name), sort: 0 };
+          entry.row.orderCount = String(Number(entry.row.orderCount) + 1);
+          entry.row.orderedMt = qty(dec(entry.row.orderedMt).plus(dec(item.qtyMt))).toFixed(3);
+          entry.row.deliveredMt = qty(dec(entry.row.deliveredMt).plus(dec(item.deliveredMt))).toFixed(3);
+          entry.row.remainingMt = qty(
+            dec(entry.row.orderedMt).minus(dec(entry.row.deliveredMt)),
+          ).toFixed(3);
+          entry.row.orderValue = money(dec(entry.row.orderValue).plus(dec(item.lineValue))).toFixed(2);
+          entry.sort = Number(entry.row.orderValue);
+          map.set(key, entry);
+        }
+      } else {
+        // Totals per customer (all products).
+        const entry =
+          map.get(order.customerId) ?? {
+            row: blank(order.customerId, order.customer.name, "All products"),
+            sort: 0,
+          };
+        entry.row.orderCount = String(Number(entry.row.orderCount) + 1);
+        for (const item of order.items) {
+          if (filter.productCode && item.productCode !== filter.productCode) continue;
+          entry.row.orderedMt = qty(dec(entry.row.orderedMt).plus(dec(item.qtyMt))).toFixed(3);
+          entry.row.deliveredMt = qty(dec(entry.row.deliveredMt).plus(dec(item.deliveredMt))).toFixed(3);
+          entry.row.orderValue = money(dec(entry.row.orderValue).plus(dec(item.lineValue))).toFixed(2);
+        }
+        entry.row.remainingMt = qty(
+          dec(entry.row.orderedMt).minus(dec(entry.row.deliveredMt)),
+        ).toFixed(3);
+        entry.sort = Number(entry.row.orderValue);
+        map.set(order.customerId, entry);
       }
-      entry.row.remainingMt = qty(dec(entry.row.orderedMt).minus(dec(entry.row.deliveredMt))).toFixed(3);
-      map.set(order.customerId, entry);
     }
-    return [...map.values()].sort((a, b) => b.sort - a.sort).map((entry) => entry.row);
+
+    return [...map.values()]
+      .sort((a, b) => b.sort - a.sort || String(a.row.customerName).localeCompare(String(b.row.customerName)))
+      .map((entry) => entry.row);
   },
 };
 
 const productSales: ReportDefinition = {
   key: "product-sales",
   title: "Product-wise sales",
-  description: "Ordered and delivered quantity and value per product.",
+  description:
+    "Ordered and delivered quantity and value per product — optionally broken down by customer.",
+  options: [
+    {
+      key: "groupBy",
+      label: "Breakdown",
+      choices: [
+        { value: "product", label: "Product only (totals)" },
+        { value: "customer", label: "Product → Customer" },
+      ],
+    },
+  ],
   columns: [
     { key: "productCode", label: "Code" },
     { key: "productName", label: "Product" },
     { key: "category", label: "Category" },
+    { key: "customerName", label: "Customer" },
     { key: "orderedMt", label: "Ordered (MT)", kind: "mt", align: "right" },
     { key: "deliveredMt", label: "Delivered (MT)", kind: "mt", align: "right" },
     { key: "remainingMt", label: "Remaining (MT)", kind: "mt", align: "right" },
@@ -189,15 +239,17 @@ const productSales: ReportDefinition = {
     { key: "avgRate", label: "Weighted avg rate (৳/MT)", kind: "money", align: "right" },
   ],
   async run(filter, user) {
+    const byCustomer = filter.options?.groupBy === "customer";
     const items = await prisma.orderItem.findMany({
       where: {
         order: {
           orderDate: { gte: filter.from, lte: filter.to },
           ...(user.role === "SALES" ? { createdBy: user.id } : {}),
+          ...(filter.customerCode ? { customerId: filter.customerCode } : {}),
         },
         ...(filter.productCode ? { productCode: filter.productCode } : {}),
       },
-      include: { product: true },
+      include: { product: true, order: { include: { customer: true } } },
     });
 
     const map = new Map<
@@ -206,18 +258,23 @@ const productSales: ReportDefinition = {
         productCode: string;
         productName: string;
         category: string;
+        customerName: string;
         ordered: ReturnType<typeof dec>;
         delivered: ReturnType<typeof dec>;
         value: ReturnType<typeof dec>;
       }
     >();
+
     for (const item of items) {
+      // One row per (product, customer) when the breakdown is on.
+      const key = byCustomer ? `${item.productCode}|${item.order.customerId}` : item.productCode;
       const entry =
-        map.get(item.productCode) ??
+        map.get(key) ??
         {
           productCode: item.productCode,
           productName: item.product.name,
           category: item.product.category,
+          customerName: byCustomer ? item.order.customer.name : "All customers",
           ordered: dec(0),
           delivered: dec(0),
           value: dec(0),
@@ -225,15 +282,19 @@ const productSales: ReportDefinition = {
       entry.ordered = entry.ordered.plus(dec(item.qtyMt));
       entry.delivered = entry.delivered.plus(dec(item.deliveredMt));
       entry.value = entry.value.plus(dec(item.lineValue));
-      map.set(item.productCode, entry);
+      map.set(key, entry);
     }
 
     return [...map.values()]
-      .sort((a, b) => b.value.comparedTo(a.value))
+      .sort(
+        (a, b) =>
+          a.productName.localeCompare(b.productName) || b.value.comparedTo(a.value),
+      )
       .map((entry) => ({
         productCode: entry.productCode,
         productName: entry.productName,
         category: entry.category,
+        customerName: entry.customerName,
         orderedMt: qty(entry.ordered).toFixed(3),
         deliveredMt: qty(entry.delivered).toFixed(3),
         remainingMt: qty(entry.ordered.minus(entry.delivered)).toFixed(3),

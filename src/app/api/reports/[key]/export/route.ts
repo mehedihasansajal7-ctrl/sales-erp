@@ -28,6 +28,14 @@ export async function GET(
     const toParam = url.searchParams.get("to") ?? toZonedDateString();
     const to = zonedToUtc(`${toParam}T23:59:59`);
 
+    // Anything that is not a known filter is a per-report option (e.g. groupBy),
+    // so the export always matches what the screen is showing.
+    const known = new Set(["format", "from", "to", "warehouseCode", "customerCode", "productCode"]);
+    const options: Record<string, string> = {};
+    for (const [key, value] of url.searchParams.entries()) {
+      if (!known.has(key) && value !== "") options[key] = value;
+    }
+
     const report = getReport(key as ReportKey);
     const rows = await report.run(
       {
@@ -36,6 +44,7 @@ export async function GET(
         warehouseCode: url.searchParams.get("warehouseCode") ?? undefined,
         customerCode: url.searchParams.get("customerCode") ?? undefined,
         productCode: url.searchParams.get("productCode") ?? undefined,
+        options,
       },
       { id: user.id, name: user.name, role: user.role, warehouseCode: user.warehouseId },
     );

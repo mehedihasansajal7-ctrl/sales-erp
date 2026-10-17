@@ -125,6 +125,58 @@ describe("Reports and exports", () => {
     expect(rows).toHaveLength(0);
   });
 
+  it("customer-wise report can break down by product (and totals stay complete)", async () => {
+    const totals = await REPORTS["customer-sales"].run(period, {
+      id: ctx.admin.id,
+      name: ctx.admin.name,
+      role: "ADMIN",
+    });
+    const totalRow = totals.find((row) => row.customerName === "Report Trader");
+    expect(totalRow?.orderedMt).toBe("100.000");
+    expect(totalRow?.productName).toBe("All products");
+
+    const byProduct = await REPORTS["customer-sales"].run(
+      { ...period, options: { groupBy: "product" } },
+      { id: ctx.admin.id, name: ctx.admin.name, role: "ADMIN" },
+    );
+    const fert = byProduct.find(
+      (row) => row.customerName === "Report Trader" && row.productName === "Urea Fertilizer",
+    );
+    const coal = byProduct.find(
+      (row) => row.customerName === "Report Trader" && row.productName === "Imported Coal",
+    );
+    expect(fert?.orderedMt).toBe("60.000");
+    expect(coal?.orderedMt).toBe("40.000");
+
+    // The breakdown must still add up to the same total.
+    const breakdownTotal = byProduct
+      .filter((row) => row.customerName === "Report Trader")
+      .reduce((acc, row) => acc + Number(row.orderedMt), 0);
+    expect(breakdownTotal).toBe(100);
+  });
+
+  it("product-wise report can break down by customer", async () => {
+    const byCustomer = await REPORTS["product-sales"].run(
+      { ...period, options: { groupBy: "customer" } },
+      { id: ctx.admin.id, name: ctx.admin.name, role: "ADMIN" },
+    );
+    const fert = byCustomer.find(
+      (row) => row.productCode === "FERT-UREA" && row.customerName === "Report Trader",
+    );
+    expect(fert?.orderedMt).toBe("60.000");
+    expect(fert?.orderValue).toBe("3000000.00");
+
+    // Totals view still reports "All customers" and the full quantity.
+    const totals = await REPORTS["product-sales"].run(period, {
+      id: ctx.admin.id,
+      name: ctx.admin.name,
+      role: "ADMIN",
+    });
+    const fertTotal = totals.find((row) => row.productCode === "FERT-UREA");
+    expect(fertTotal?.customerName).toBe("All customers");
+    expect(fertTotal?.orderedMt).toBe("60.000");
+  });
+
   it("exports a report to Excel with a real xlsx payload", async () => {
     const report = REPORTS["order-balance"];
     const rows = await report.run(period, { id: ctx.admin.id, name: ctx.admin.name, role: "ADMIN" });
