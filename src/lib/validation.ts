@@ -197,17 +197,30 @@ export const settingsSchema = z.object({
 // Finance — rates
 // ---------------------------------------------------------------------------
 
-export const ratePublishSchema = z.object({
-  productCode: nonEmptyId,
-  ratePerMt: decimalField(MONEY_SCALE, "Rate", { positive: true }),
-  effectiveFrom: zonedDateTimeSchema,
-  note: z
-    .string()
-    .trim()
-    .max(300)
-    .optional()
-    .or(z.literal("").transform(() => undefined)),
-});
+export const ratePublishSchema = z
+  .object({
+    productCode: nonEmptyId,
+    ratePerMt: decimalField(MONEY_SCALE, "Rate", { positive: true }),
+    effectiveFrom: zonedDateTimeSchema,
+    /**
+     * Optional end of the validity window. Leave empty to keep the rate active
+     * until a newer rate is published.
+     */
+    effectiveTo: zonedDateTimeSchema.optional().or(z.literal("").transform(() => undefined)),
+    note: z
+      .string()
+      .trim()
+      .max(300)
+      .optional()
+      .or(z.literal("").transform(() => undefined)),
+  })
+  .refine(
+    (value) => !value.effectiveTo || new Date(value.effectiveTo) > new Date(value.effectiveFrom),
+    {
+      message: "Valid until must be after the effective-from date and time.",
+      path: ["effectiveTo"],
+    },
+  );
 
 // ---------------------------------------------------------------------------
 // Sales — orders

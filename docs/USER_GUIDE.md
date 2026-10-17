@@ -22,6 +22,20 @@ What happens next:
 * The previous rate becomes history (`Superseded`); nothing is edited in place.
 * An order created earlier keeps its own rate forever, even if you publish a new one a minute later.
 
+**How long does a rate stay valid?**
+
+* **By default: until the next rate is published.** You do not have to type an end date. The moment
+  Finance publishes a newer rate, the previous one is marked `Superseded` and is no longer offered to
+  sales; orders that were already created keep the rate that was locked into them.
+* **Optional end date.** If a rate must stop on a fixed date even when nobody publishes a new one,
+  fill **Valid until**. After that moment the rate is no longer used and an order attempt fails with
+  *“The rate for \<product> expired on \<date>. Finance must publish a new rate.”*
+* **Future-dated rate.** If the latest rate's **Effective from** is still in the future, it is not used
+  yet and ordering fails with *“The next rate for \<product> starts on \<date>.”*
+
+**Finance → Rate history** shows every publication with product, amount, publisher and time, with
+product and date filters. The dashboard also charts the last 30 days.
+
 **Finance → Rate history** shows every publication with product, amount, publisher and time, with
 product and date filters. The dashboard also charts the last 30 days.
 

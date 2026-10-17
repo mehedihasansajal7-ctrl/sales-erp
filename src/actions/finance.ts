@@ -17,6 +17,7 @@ export async function publishRateAction(
       productCode: str(formData, "productCode"),
       ratePerMt: str(formData, "ratePerMt"),
       effectiveFrom: str(formData, "effectiveFrom"),
+      effectiveTo: str(formData, "effectiveTo"),
       note: str(formData, "note"),
     });
 

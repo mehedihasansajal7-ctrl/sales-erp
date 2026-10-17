@@ -209,6 +209,9 @@ model Rate {
   productCode  String     @map("product_id")
   ratePerMt    Decimal    @db.Decimal(18, 2) @map("rate_per_mt")
   effectiveFrom DateTime  @map("effective_from")
+  /// Optional end of the validity window. null = stays active until a newer rate
+  /// is published (the default behaviour of Rule 1).
+  effectiveTo  DateTime?  @map("effective_to")
   status       RateStatus @default(ACTIVE)
   publishedBy  String     @map("published_by")
   publishedAt  DateTime   @default(now()) @map("published_at")
@@ -453,6 +456,8 @@ model StockLedger {
   @@index([warehouseId, productCode, createdAt(sort: Desc)])
   @@index([movementType])
   @@index([refType, refId])
+  /// Global "latest movements first" ordering used by the stock-ledger screen.
+  @@index([createdAt(sort: Desc)], map: "stock_ledger_created_at_desc_idx")
   @@map("stock_ledger")
 }
 

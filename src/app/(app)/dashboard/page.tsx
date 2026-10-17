@@ -117,6 +117,9 @@ export default async function DashboardPage() {
                           <span className="font-semibold tabular-nums">{formatBdt(rate.ratePerMt)}</span>
                           <span className="block text-xs text-slate-500">
                             since {formatDateTime(rate.effectiveFrom)}
+                            {rate.effectiveTo
+                              ? ` · valid until ${formatDateTime(rate.effectiveTo)}`
+                              : " · until the next rate"}
                           </span>
                         </>
                       ) : (

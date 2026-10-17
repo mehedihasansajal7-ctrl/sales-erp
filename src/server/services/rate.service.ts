@@ -16,14 +16,27 @@ export type PublishRateInput = {
   productCode: string;
   ratePerMt: string;
   effectiveFrom: string;
+  /** Optional end of the validity window (ISO wall-clock in APP_TIMEZONE). */
+  effectiveTo?: string;
   note?: string;
 };
 
 export type Actor = { id: string; name: string; role: string } | null;
 
 /**
+ * Prisma filter for "this rate is inside its validity window at `at`".
+ * A rate with no `effectiveTo` stays valid until a newer rate supersedes it.
+ */
+function validAt(at: Date) {
+  return {
+    effectiveFrom: { lte: at },
+    OR: [{ effectiveTo: null }, { effectiveTo: { gt: at } }],
+  } satisfies Prisma.RateWhereInput;
+}
+
+/**
  * The rate that applies to `at` (default: now) for one product.
- * Returns null when the product has no published rate effective yet.
+ * Returns null when the product has no published rate within its validity window.
  */
 export async function findCurrentRate(
   tx: Tx | typeof prisma,
@@ -31,7 +44,7 @@ export async function findCurrentRate(
   at: Date = new Date(),
 ) {
   return tx.rate.findFirst({
-    where: { productCode, effectiveFrom: { lte: at } },
+    where: { productCode, ...validAt(at) },
     orderBy: { effectiveFrom: "desc" },
     include: { product: true, publisher: { select: { id: true, name: true } } },
   });
@@ -40,7 +53,7 @@ export async function findCurrentRate(
 /** Current rate per product for every product that has one. */
 export async function currentRates(at: Date = new Date()) {
   const rates = await prisma.rate.findMany({
-    where: { effectiveFrom: { lte: at } },
+    where: validAt(at),
     orderBy: [{ productCode: "asc" }, { effectiveFrom: "desc" }],
     include: { product: true, publisher: { select: { id: true, name: true } } },
   });
@@ -62,6 +75,7 @@ export async function currentRates(at: Date = new Date()) {
       rate,
       ratePerMt: rate ? rate.ratePerMt.toFixed(2) : null,
       effectiveFrom: rate?.effectiveFrom ?? null,
+      effectiveTo: rate?.effectiveTo ?? null,
       hasRate: Boolean(rate),
     };
   });
@@ -70,7 +84,12 @@ export async function currentRates(at: Date = new Date()) {
 /** Publishes a new rate and supersedes the previous effective one (history kept). */
 export async function publishRate(input: PublishRateInput, user: Actor, ip?: string) {
   const effectiveFrom = zonedToUtc(input.effectiveFrom);
+  const effectiveTo = input.effectiveTo ? zonedToUtc(input.effectiveTo) : null;
   const ratePerMt = money(input.ratePerMt);
+
+  if (effectiveTo && effectiveTo.getTime() <= effectiveFrom.getTime()) {
+    throw errors.validation("Valid until must be after the effective-from date and time.");
+  }
 
   return prisma.$transaction(async (tx) => {
     const product = await tx.product.findUnique({ where: { code: input.productCode } });
@@ -85,6 +104,7 @@ export async function publishRate(input: PublishRateInput, user: Actor, ip?: str
         productCode: input.productCode,
         ratePerMt: ratePerMt.toFixed(2),
         effectiveFrom,
+        effectiveTo,
         status: "ACTIVE",
         publishedBy: user.id,
         note: input.note ?? null,
@@ -114,6 +134,7 @@ export async function publishRate(input: PublishRateInput, user: Actor, ip?: str
           product: product.code,
           ratePerMt: ratePerMt.toFixed(2),
           effectiveFrom: effectiveFrom.toISOString(),
+          effectiveTo: effectiveTo ? effectiveTo.toISOString() : null,
           supersededCount: superseded.count,
         },
       },
@@ -166,6 +187,7 @@ export async function rateHistory(filter: RateHistoryFilter = {}) {
       productName: r.product.name,
       ratePerMt: r.ratePerMt.toFixed(2),
       effectiveFrom: r.effectiveFrom,
+      effectiveTo: r.effectiveTo,
       status: r.status as RateStatus,
       publishedBy: r.publisher.name,
       publishedAt: r.publishedAt,
@@ -187,6 +209,7 @@ export async function dailyRateChanges(from: Date, to: Date) {
   });
   return rates.map((rate) => ({
     effectiveFrom: rate.effectiveFrom,
+    effectiveTo: rate.effectiveTo,
     productCode: rate.productCode,
     productName: rate.product.name,
     ratePerMt: rate.ratePerMt.toFixed(2),

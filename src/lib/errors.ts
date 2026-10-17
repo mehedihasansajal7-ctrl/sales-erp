@@ -10,6 +10,7 @@ export type ErrorCode =
   | "NOT_FOUND"
   | "CONFLICT"
   | "RATE_MISSING"
+  | "RATE_EXPIRED"
   | "PRIORITY_BLOCKED"
   | "OVER_ALLOCATION"
   | "INSUFFICIENT_STOCK"
@@ -49,6 +50,12 @@ export const errors = {
   conflict: (message: string) => new AppError("CONFLICT", message, 409),
   rateMissing: (product: string) =>
     new AppError("RATE_MISSING", `No published rate for product ${product}.`, 409),
+  rateExpired: (product: string, until: string) =>
+    new AppError(
+      "RATE_EXPIRED",
+      `The rate for ${product} expired on ${until}. Finance must publish a new rate.`,
+      409,
+    ),
   priorityBlocked: (orderNo: string, remainingMt: string, customerName?: string) =>
     new AppError(
       "PRIORITY_BLOCKED",

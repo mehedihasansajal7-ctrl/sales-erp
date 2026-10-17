@@ -77,3 +77,13 @@ continue."* This is that record. Nothing here changes a stated business rule —
 25. The project lives at **`D:\sales-erp`** because drive `C:` had no free space when it was created.
     `D:\sales-erp\.npmrc` points npm's cache at `D:\npm-cache` and is git-ignored (it is
     machine-specific). Nothing else depends on the drive letter.
+26. **Rate validity window (addition, 2026-10-17).** Rule 1 only defines an `effective_from`, so the
+    default stays exactly as briefed: a rate is valid **until the next rate is published**. Because the
+    product owner asked how to state "how long a rate stays active", an **optional** `effective_to` was
+    added (nullable). Empty = the documented default; filled = the rate stops on that date and orders
+    fail with `RATE_EXPIRED` until Finance publishes a new one. A future-dated `effective_from` is not
+    used yet and produces its own message. Both behaviours are covered by `tests/rate-lock.test.ts`.
+27. **Prisma drift and hand-written SQL.** Adding the `rates.effective_to` migration made Prisma drop
+    one index that had only been created with raw SQL (`stock_ledger_created_at_desc_idx`). It was
+    restored *and declared in `schema.prisma`* so Prisma manages it from now on; the CHECK constraints
+    and the audit triggers live only in SQL and are intentionally invisible to Prisma.

@@ -411,6 +411,7 @@ const rateHistory: ReportDefinition = {
   description: "Every rate publication with product, time and publisher.",
   columns: [
     { key: "effectiveFrom", label: "Effective from", kind: "datetime" },
+    { key: "effectiveTo", label: "Valid until", kind: "datetime" },
     { key: "productCode", label: "Code" },
     { key: "productName", label: "Product" },
     { key: "ratePerMt", label: "Rate (৳/MT)", kind: "money", align: "right" },
@@ -421,6 +422,7 @@ const rateHistory: ReportDefinition = {
     const rows = await dailyRateChanges(filter.from, filter.to);
     return rows.map((row) => ({
       effectiveFrom: toZonedDateString(row.effectiveFrom),
+      effectiveTo: row.effectiveTo ? toZonedDateString(row.effectiveTo) : "Until next rate",
       productCode: row.productCode,
       productName: row.productName,
       ratePerMt: row.ratePerMt,

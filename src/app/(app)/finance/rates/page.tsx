@@ -53,6 +53,16 @@ export default async function RatesPage() {
       render: (row) => (row.effectiveFrom ? formatDateTime(row.effectiveFrom) : "—"),
     },
     {
+      key: "effectiveTo",
+      label: "Valid until",
+      render: (row) =>
+        row.effectiveTo ? (
+          formatDateTime(row.effectiveTo)
+        ) : (
+          <span className="text-xs text-slate-500">Until the next rate is published</span>
+        ),
+    },
+    {
       key: "publishedBy",
       label: "Published by",
       render: (row) => row.rate?.publisher.name ?? "—",

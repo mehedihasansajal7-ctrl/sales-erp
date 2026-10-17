@@ -39,6 +39,16 @@ export default async function RateHistoryPage({
       render: (row) => formatDateTime(row.effectiveFrom),
     },
     {
+      key: "effectiveTo",
+      label: "Valid until",
+      render: (row) =>
+        row.effectiveTo ? (
+          formatDateTime(row.effectiveTo)
+        ) : (
+          <span className="text-xs text-slate-500">Next rate</span>
+        ),
+    },
+    {
       key: "product",
       label: "Product",
       render: (row) => (

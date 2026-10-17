@@ -64,6 +64,15 @@ export function RatePublishForm({
         <FieldError state={state} name="effectiveFrom" />
       </Field>
 
+      <Field
+        label="Valid until (optional)"
+        htmlFor="effectiveTo"
+        hint="Leave empty and this rate stays active until Finance publishes the next one. Fill it in only when the rate must stop on a fixed date."
+      >
+        <Input id="effectiveTo" name="effectiveTo" type="datetime-local" />
+        <FieldError state={state} name="effectiveTo" />
+      </Field>
+
       <Field label="Note (optional)" htmlFor="note">
         <Textarea id="note" name="note" rows={2} placeholder="Reason for the change, market note…" />
       </Field>

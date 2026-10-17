@@ -3,7 +3,7 @@ import prisma, { type Tx } from "@/lib/prisma";
 import { dec, money, qty } from "@/lib/decimal";
 import { errors } from "@/lib/errors";
 import { actor, writeAudit } from "@/lib/audit";
-import { zonedToUtc } from "@/lib/dates";
+import { formatDateTime, zonedToUtc } from "@/lib/dates";
 import { nextDocNo } from "@/lib/numbering";
 import { assertOrderTransition, ORDER_STATUS_LABELS } from "@/lib/state-machines";
 import { getSettings, SETTING_KEYS } from "@/lib/settings";
@@ -129,9 +129,25 @@ export async function createOrder(input: CreateOrderInput, user: ServiceActor, i
         throw errors.validation(`Product ${product.name} is inactive and cannot be ordered.`);
       }
 
-      // Rule 1: the rate must exist *at order time* and is copied + locked here.
+      // Rule 1: the rate must be inside its validity window at order time and is
+      // copied + locked here. A rate with no end date stays valid until Finance
+      // publishes the next one.
       const rate = await findCurrentRate(tx, line.productCode, at);
-      if (!rate) throw errors.rateMissing(product.name);
+      if (!rate) {
+        const latest = await tx.rate.findFirst({
+          where: { productCode: line.productCode },
+          orderBy: { effectiveFrom: "desc" },
+        });
+        if (latest && latest.effectiveFrom.getTime() > at.getTime()) {
+          throw errors.validation(
+            `The next rate for ${product.name} starts on ${formatDateTime(latest.effectiveFrom)}.`,
+          );
+        }
+        if (latest?.effectiveTo) {
+          throw errors.rateExpired(product.name, formatDateTime(latest.effectiveTo));
+        }
+        throw errors.rateMissing(product.name);
+      }
 
       const quantity = qty(line.qtyMt);
       prepared.push({

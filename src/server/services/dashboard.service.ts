@@ -155,6 +155,7 @@ export async function dashboardData(user: ServiceActor) {
       productName: entry.product.name,
       ratePerMt: entry.ratePerMt,
       effectiveFrom: entry.effectiveFrom,
+      effectiveTo: entry.effectiveTo,
       hasRate: entry.hasRate,
     })),
     rateTrend: trend,
