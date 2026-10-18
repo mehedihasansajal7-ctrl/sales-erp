@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { TriangleAlert } from "lucide-react";
 import { createDeliveryOrderAction } from "@/actions/delivery";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -35,7 +36,9 @@ export function DoCreateForm({
   queue,
   blocked,
   blockingOrderNo,
+  blockingOrderId,
   blockingRemainingMt,
+  queuePosition,
   overrideEnabled,
 }: {
   orderId: string;
@@ -47,7 +50,9 @@ export function DoCreateForm({
   queue: QueueEntry[];
   blocked: boolean;
   blockingOrderNo: string | null;
+  blockingOrderId: string | null;
   blockingRemainingMt: string | null;
+  queuePosition: number;
   overrideEnabled: boolean;
 }) {
   const { state, formAction, pending } = useActionForm(createDeliveryOrderAction);
@@ -87,11 +92,27 @@ export function DoCreateForm({
             {blockingRemainingMt ? ` (remaining ${blockingRemainingMt} MT)` : ""}.
           </p>
           <p className="mt-1 text-xs">
-            A Delivery Order for {orderNo} can still be created here with a Sales Ops priority
-            override and a written reason, which is audited and reported.
+            {orderNo} is #{queuePosition} in this customer&apos;s queue. Deliver{" "}
+            {blockingOrderNo} first, or use the Sales Ops priority override below with a written
+            reason (audited and reported).
           </p>
+          {blockingOrderId ? (
+            <p className="mt-2">
+              <Link
+                href={`/sales-ops/delivery-orders/new?orderId=${blockingOrderId}`}
+                className="inline-flex items-center gap-1 rounded-md border border-red-300 bg-white px-2 py-1 text-xs font-medium text-red-800 hover:bg-red-100"
+              >
+                Deliver {blockingOrderNo} first →
+              </Link>
+            </p>
+          ) : null}
         </div>
-      ) : null}
+      ) : (
+        <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+          {orderNo} is #{queuePosition} in {customerName}&apos;s queue — delivery is allowed without
+          any override.
+        </p>
+      )}
 
       <Card>
         <CardHeader>
@@ -219,13 +240,8 @@ export function DoCreateForm({
             <Textarea id="note" name="note" rows={2} placeholder="Truck arrangement, port, batch…" />
           </Field>
 
-          {overrideEnabled ? (
-            <div
-              className={cn(
-                "flex flex-col gap-2 rounded-md border p-3",
-                blocked ? "border-amber-300 bg-amber-50/70" : "border-slate-200 bg-slate-50",
-              )}
-            >
+          {blocked && overrideEnabled ? (
+            <div className="flex flex-col gap-2 rounded-md border border-amber-300 bg-amber-50/70 p-3">
               <div className="flex items-center gap-2">
                 <Checkbox
                   id="priorityOverride"
@@ -236,8 +252,9 @@ export function DoCreateForm({
                 <Label htmlFor="priorityOverride">Priority override (Sales Ops only)</Label>
               </div>
               <p className="text-xs text-slate-600">
-                Bypasses the customer&apos;s queue for this delivery order. The reason, the blocked
-                order and your name appear in the audit trail and the priority override report.
+                Only needed because {blockingOrderNo} is still open. Ticking this bypasses the
+                customer&apos;s queue for this delivery order; the reason, the blocked order and your
+                name appear in the audit trail and the priority override report.
               </p>
               {override ? (
                 <Field label="Written reason" htmlFor="overrideReason" required>

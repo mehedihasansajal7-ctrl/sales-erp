@@ -159,7 +159,8 @@ export default async function NewDeliveryOrderPage({
         <Card className="mb-4 border-emerald-200 bg-emerald-50/40">
           <CardHeader>
             <CardTitle className="text-emerald-900">
-              This order is at the head of the customer&apos;s queue — delivery is allowed.
+              This order is at the head of the customer&apos;s queue — delivery is allowed without any
+              override.
             </CardTitle>
           </CardHeader>
         </Card>
@@ -180,7 +181,9 @@ export default async function NewDeliveryOrderPage({
         }))}
         blocked={blocked}
         blockingOrderNo={head?.orderNo ?? null}
+        blockingOrderId={head?.id ?? null}
         blockingRemainingMt={head?.remainingMt ?? null}
+        queuePosition={queue.findIndex((entry) => entry.id === order.id) + 1}
         overrideEnabled={overrideEnabled}
       />
     </div>
