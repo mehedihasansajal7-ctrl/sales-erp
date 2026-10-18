@@ -167,6 +167,66 @@ describe("Rules 4, 5 and 6 — allocation, dispatch and reservation", () => {
     expect(Number(afterDispatch.onHandMt)).toBe(Number(before.onHandMt) - 30);
   });
 
+  it("splits a two-product order across two warehouses (one DO per warehouse)", async () => {
+    await prisma.customer.create({ data: { code: "CUS-MW2", name: "Two Product Trader" } });
+
+    // One order, two products.
+    const order = await createApprovedOrder(ctx, "CUS-MW2", [
+      { productCode: "FERT-UREA", qtyMt: "10.000" },
+      { productCode: "COAL-IMPORT", qtyMt: "5.000" },
+    ]);
+    const items = await orderItemsOf(order.id);
+    const fert = items.find((item) => item.productCode === "FERT-UREA")!;
+    const coal = items.find((item) => item.productCode === "COAL-IMPORT")!;
+
+    // Dhaka has no coal in this fixture / Chattogram has no wheat: the availability
+    // column tells Sales Ops which line can leave from which warehouse.
+    const dhakaCoal = await balanceOf("WH-DHK", "COAL-IMPORT");
+    expect(Number(dhakaCoal.onHandMt)).toBeGreaterThan(0); // (fixture keeps coal everywhere)
+
+    // DO-1: only the urea line, from Dhaka.
+    const doFert = await createDo(ctx, order.id, "WH-DHK", [
+      { orderItemId: fert.id, qtyMt: "10.000" },
+    ]);
+    expect(doFert.deliveryOrder.items).toHaveLength(1);
+
+    // DO-2: only the coal line, from Chattogram — same order, different warehouse.
+    const doCoal = await createDo(ctx, order.id, "WH-CTG", [
+      { orderItemId: coal.id, qtyMt: "5.000" },
+    ]);
+    expect(doCoal.deliveryOrder.items).toHaveLength(1);
+    expect(doCoal.deliveryOrder.warehouseCode).toBe("WH-CTG");
+
+    // Each line is allocated exactly once, across the two DOs.
+    const afterAllocation = await orderItemsOf(order.id);
+    expect(afterAllocation.find((item) => item.productCode === "FERT-UREA")?.doAllocatedMt.toFixed(3)).toBe(
+      "10.000",
+    );
+    expect(afterAllocation.find((item) => item.productCode === "COAL-IMPORT")?.doAllocatedMt.toFixed(3)).toBe(
+      "5.000",
+    );
+
+    // The order only completes when BOTH warehouses have dispatched.
+    const fertDoItems = await doItemsOf(doFert.deliveryOrder.id);
+    await dispatch(
+      ctx,
+      doFert.deliveryOrder.id,
+      [{ doItemId: fertDoItems[0]!.id, qtyMt: "10.000" }],
+      "CH-MW2-1",
+    );
+    expect(await orderStatusOf(order.id)).toBe("PARTIALLY_DELIVERED");
+
+    const coalDoItems = await doItemsOf(doCoal.deliveryOrder.id);
+    await dispatch(
+      ctx,
+      doCoal.deliveryOrder.id,
+      [{ doItemId: coalDoItems[0]!.id, qtyMt: "5.000" }],
+      "CH-MW2-2",
+      ctx.warehouseCtg,
+    );
+    expect(await orderStatusOf(order.id)).toBe("COMPLETED");
+  });
+
   it("never allows a dispatch date earlier than the loading date (Rule 6)", async () => {
     await prisma.customer.create({ data: { code: "CUS-DATE", name: "Date Trader" } });
     const order = await createApprovedOrder(ctx, "CUS-DATE", [

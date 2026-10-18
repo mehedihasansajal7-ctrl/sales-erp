@@ -122,6 +122,27 @@ mandatory and the change is audited) or **Cancel DO** (the reservation is releas
 > and dates, and dispatches exactly what Sales Operations decided. Need a smaller shipment? Create a
 > second DO for the balance.
 
+### Case: one order, two products, stock in two warehouses
+
+Customer orders **Urea 50 MT + Coal 20 MT**. At delivery time Dhaka has the Urea but no Coal, while
+Chattogram has the Coal.
+
+1. **Create two delivery orders — one per warehouse.** Choose Dhaka, enter only the Urea line (the
+   *Available here* column shows 0 for Coal, so the form refuses it anyway).
+2. Repeat with Chattogram for the Coal line.
+3. Each DO reserves only its own warehouse's stock. The order's remaining quantity is the sum of both
+   lines, and the progress bar shows the combined progress.
+4. The order becomes `COMPLETED` only when **both** DOs are dispatched. Until then it stays at the head
+   of the customer's queue — so that customer's *next* order waits, no matter which warehouse is slow.
+
+**Do not split the order itself.** Two separate orders do not help here: the older order would block
+the newer one anyway (Rule 3). Split into separate orders only when the customer really wants two
+independent deals.
+
+Alternative to consider: if a single truck/challan is important, move the missing product with a
+**stock transfer** (Warehouse → Stock transfers) and deliver everything from one warehouse — usually
+worth it only for large quantities, because it adds a second handling step.
+
 Other order actions on the order detail screen: **Cancel order** (only while nothing is delivered)
 and **Short close** (closes the remaining quantity with a reason and unblocks the customer's next
 order).
