@@ -41,6 +41,12 @@ export type ReportDefinition = {
   title: string;
   description: string;
   columns: ReportColumn[];
+  /**
+   * For reports whose columns depend on the data (e.g. one column per product),
+   * this resolves the real columns for a given filter. The screen and every
+   * export use it instead of `columns` when present.
+   */
+  columnsFor?: (filter: ReportFilter, user: ServiceActor) => Promise<ReportColumn[]>;
   /** Extra selects rendered in the filter bar (e.g. a breakdown / grouping). */
   options?: { key: string; label: string; choices: { value: string; label: string }[] }[];
   run: (filter: ReportFilter, user: ServiceActor) => Promise<ReportRow[]>;
@@ -50,6 +56,8 @@ export type ReportKey =
   | "order-balance"
   | "customer-sales"
   | "product-sales"
+  | "customer-product-matrix"
+  | "warehouse-sales"
   | "pending-do"
   | "stock-ledger"
   | "stock-summary"
@@ -117,6 +125,16 @@ const orderBalance: ReportDefinition = {
   },
 };
 
+const CUSTOMER_SALES_BASE: ReportColumn[] = [
+  { key: "customerCode", label: "Code" },
+  { key: "customerName", label: "Customer" },
+  { key: "orderCount", label: "Orders", kind: "number", align: "right" },
+  { key: "orderedMt", label: "Ordered (MT)", kind: "mt", align: "right" },
+  { key: "deliveredMt", label: "Delivered (MT)", kind: "mt", align: "right" },
+  { key: "remainingMt", label: "Remaining (MT)", kind: "mt", align: "right" },
+  { key: "orderValue", label: "Order value (৳)", kind: "money", align: "right" },
+];
+
 const customerSales: ReportDefinition = {
   key: "customer-sales",
   title: "Customer-wise sales & delivery",
@@ -132,16 +150,21 @@ const customerSales: ReportDefinition = {
       ],
     },
   ],
-  columns: [
-    { key: "customerCode", label: "Code" },
-    { key: "customerName", label: "Customer" },
-    { key: "productName", label: "Product" },
-    { key: "orderCount", label: "Orders", kind: "number", align: "right" },
-    { key: "orderedMt", label: "Ordered (MT)", kind: "mt", align: "right" },
-    { key: "deliveredMt", label: "Delivered (MT)", kind: "mt", align: "right" },
-    { key: "remainingMt", label: "Remaining (MT)", kind: "mt", align: "right" },
-    { key: "orderValue", label: "Order value (৳)", kind: "money", align: "right" },
-  ],
+  columns: CUSTOMER_SALES_BASE,
+  /**
+   * The Product column only exists in the product breakdown; showing "All
+   * products" on every row in the totals view was confusing.
+   */
+  async columnsFor(filter) {
+    const byProduct = filter.options?.groupBy === "product";
+    if (!byProduct) return CUSTOMER_SALES_BASE;
+    return [
+      CUSTOMER_SALES_BASE[0]!,
+      CUSTOMER_SALES_BASE[1]!,
+      { key: "productName", label: "Product" },
+      ...CUSTOMER_SALES_BASE.slice(2),
+    ];
+  },
   async run(filter, user) {
     const byProduct = filter.options?.groupBy === "product";
     const orders = await prisma.order.findMany({
@@ -212,6 +235,17 @@ const customerSales: ReportDefinition = {
   },
 };
 
+const PRODUCT_SALES_BASE: ReportColumn[] = [
+  { key: "productCode", label: "Code" },
+  { key: "productName", label: "Product" },
+  { key: "category", label: "Category" },
+  { key: "orderedMt", label: "Ordered (MT)", kind: "mt", align: "right" },
+  { key: "deliveredMt", label: "Delivered (MT)", kind: "mt", align: "right" },
+  { key: "remainingMt", label: "Remaining (MT)", kind: "mt", align: "right" },
+  { key: "orderValue", label: "Order value (৳)", kind: "money", align: "right" },
+  { key: "avgRate", label: "Weighted avg rate (৳/MT)", kind: "money", align: "right" },
+];
+
 const productSales: ReportDefinition = {
   key: "product-sales",
   title: "Product-wise sales",
@@ -227,17 +261,17 @@ const productSales: ReportDefinition = {
       ],
     },
   ],
-  columns: [
-    { key: "productCode", label: "Code" },
-    { key: "productName", label: "Product" },
-    { key: "category", label: "Category" },
-    { key: "customerName", label: "Customer" },
-    { key: "orderedMt", label: "Ordered (MT)", kind: "mt", align: "right" },
-    { key: "deliveredMt", label: "Delivered (MT)", kind: "mt", align: "right" },
-    { key: "remainingMt", label: "Remaining (MT)", kind: "mt", align: "right" },
-    { key: "orderValue", label: "Order value (৳)", kind: "money", align: "right" },
-    { key: "avgRate", label: "Weighted avg rate (৳/MT)", kind: "money", align: "right" },
-  ],
+  columns: PRODUCT_SALES_BASE,
+  /** The Customer column only exists in the customer breakdown. */
+  async columnsFor(filter) {
+    const byCustomer = filter.options?.groupBy === "customer";
+    if (!byCustomer) return PRODUCT_SALES_BASE;
+    return [
+      ...PRODUCT_SALES_BASE.slice(0, 3),
+      { key: "customerName", label: "Customer" },
+      ...PRODUCT_SALES_BASE.slice(3),
+    ];
+  },
   async run(filter, user) {
     const byCustomer = filter.options?.groupBy === "customer";
     const items = await prisma.orderItem.findMany({
@@ -303,6 +337,217 @@ const productSales: ReportDefinition = {
           ? "0.00"
           : money(entry.value.div(entry.ordered)).toFixed(2),
       }));
+  },
+};
+
+const customerProductMatrix: ReportDefinition = {
+  key: "customer-product-matrix",
+  title: "Customer × Product matrix",
+  description:
+    "Every customer against every product in one table — quantity (MT) or value (৳) in each cell.",
+  options: [
+    {
+      key: "metric",
+      label: "Cell value",
+      choices: [
+        { value: "mt", label: "Quantity (MT)" },
+        { value: "value", label: "Value (৳)" },
+      ],
+    },
+  ],
+  columns: [],
+  async columnsFor(filter) {
+    const metric = filter.options?.metric === "value" ? "value" : "mt";
+    const kind: ReportColumn["kind"] = metric === "value" ? "money" : "mt";
+    const products = await prisma.product.findMany({
+      where: { isActive: true },
+      orderBy: { name: "asc" },
+    });
+    return [
+      { key: "customerCode", label: "Code" },
+      { key: "customerName", label: "Customer" },
+      ...products.map<ReportColumn>((product) => ({
+        key: `p_${product.code}`,
+        label: `${product.name} (${metric === "value" ? "৳" : "MT"})`,
+        kind,
+        align: "right",
+      })),
+      {
+        key: "total",
+        label: metric === "value" ? "Total value (৳)" : "Total (MT)",
+        kind,
+        align: "right",
+      },
+    ];
+  },
+  async run(filter, user) {
+    const metric = filter.options?.metric === "value" ? "value" : "mt";
+    const fmt = (value: ReturnType<typeof dec>) =>
+      metric === "value" ? money(value).toFixed(2) : qty(value).toFixed(3);
+
+    const products = await prisma.product.findMany({
+      where: { isActive: true },
+      orderBy: { name: "asc" },
+    });
+
+    const items = await prisma.orderItem.findMany({
+      where: {
+        order: {
+          orderDate: { gte: filter.from, lte: filter.to },
+          ...(user.role === "SALES" ? { createdBy: user.id } : {}),
+          ...(filter.customerCode ? { customerId: filter.customerCode } : {}),
+        },
+        ...(filter.productCode ? { productCode: filter.productCode } : {}),
+      },
+      include: { order: { include: { customer: true } } },
+    });
+
+    const map = new Map<
+      string,
+      { customerCode: string; customerName: string; cells: Map<string, ReturnType<typeof dec>>; total: ReturnType<typeof dec> }
+    >();
+
+    for (const item of items) {
+      const value = metric === "value" ? dec(item.lineValue) : dec(item.qtyMt);
+      const entry =
+        map.get(item.order.customerId) ??
+        {
+          customerCode: item.order.customerId,
+          customerName: item.order.customer.name,
+          cells: new Map<string, ReturnType<typeof dec>>(),
+          total: dec(0),
+        };
+      entry.cells.set(item.productCode, dec(entry.cells.get(item.productCode) ?? 0).plus(value));
+      entry.total = entry.total.plus(value);
+      map.set(item.order.customerId, entry);
+    }
+
+    return [...map.values()]
+      .sort((a, b) => b.total.comparedTo(a.total))
+      .map((entry) => {
+        const row: ReportRow = {
+          customerCode: entry.customerCode,
+          customerName: entry.customerName,
+          total: fmt(entry.total),
+        };
+        for (const product of products) {
+          row[`p_${product.code}`] = fmt(entry.cells.get(product.code) ?? dec(0));
+        }
+        return row;
+      });
+  },
+};
+
+const warehouseSales: ReportDefinition = {
+  key: "warehouse-sales",
+  title: "Warehouse-wise sales & delivery",
+  description: "Delivery orders, dispatched quantity and dispatched value per warehouse.",
+  columns: [
+    { key: "warehouseCode", label: "Code" },
+    { key: "warehouseName", label: "Warehouse" },
+    { key: "doCount", label: "DOs", kind: "number", align: "right" },
+    { key: "doQtyMt", label: "DO qty (MT)", kind: "mt", align: "right" },
+    { key: "dispatchedMt", label: "Dispatched (MT)", kind: "mt", align: "right" },
+    { key: "pendingMt", label: "Pending (MT)", kind: "mt", align: "right" },
+    { key: "dispatchedValue", label: "Dispatched value (৳)", kind: "money", align: "right" },
+    { key: "customers", label: "Customers", kind: "number", align: "right" },
+    { key: "products", label: "Products", kind: "number", align: "right" },
+  ],
+  async run(filter, user) {
+    const warehouseScope =
+      user.role === "WAREHOUSE" ? (user.warehouseCode ?? "__none__") : filter.warehouseCode;
+
+    const orders = await prisma.deliveryOrder.findMany({
+      where: {
+        status: { not: "CANCELLED" },
+        createdAt: { gte: filter.from, lte: filter.to },
+        ...(warehouseScope ? { warehouseId: warehouseScope } : {}),
+      },
+      include: {
+        items: true,
+        warehouse: true,
+        order: { include: { customer: true, items: true } },
+      },
+    });
+
+    const map = new Map<
+      string,
+      {
+        warehouseCode: string;
+        warehouseName: string;
+        doCount: number;
+        doQty: ReturnType<typeof dec>;
+        dispatched: ReturnType<typeof dec>;
+        value: ReturnType<typeof dec>;
+        customers: Set<string>;
+        products: Set<string>;
+      }
+    >();
+
+    for (const order of orders) {
+      const entry =
+        map.get(order.warehouseId) ??
+        {
+          warehouseCode: order.warehouseId,
+          warehouseName: order.warehouse.name,
+          doCount: 0,
+          doQty: dec(0),
+          dispatched: dec(0),
+          value: dec(0),
+          customers: new Set<string>(),
+          products: new Set<string>(),
+        };
+      entry.doCount += 1;
+      entry.customers.add(order.order.customerId);
+
+      for (const item of order.items) {
+        entry.doQty = entry.doQty.plus(dec(item.qtyMt));
+        entry.dispatched = entry.dispatched.plus(dec(item.dispatchedMt));
+        entry.products.add(item.productCode);
+
+        const orderItem = order.order.items.find((row) => row.id === item.orderItemId);
+        if (orderItem) {
+          entry.value = entry.value.plus(dec(item.dispatchedMt).mul(dec(orderItem.lockedRatePerMt)));
+        }
+      }
+      map.set(order.warehouseId, entry);
+    }
+
+    const rows = [...map.values()]
+      .sort((a, b) => b.dispatched.comparedTo(a.dispatched) || b.value.comparedTo(a.value))
+      .map<ReportRow>((entry) => ({
+        warehouseCode: entry.warehouseCode,
+        warehouseName: entry.warehouseName,
+        doCount: String(entry.doCount),
+        doQtyMt: qty(entry.doQty).toFixed(3),
+        dispatchedMt: qty(entry.dispatched).toFixed(3),
+        pendingMt: qty(entry.doQty.minus(entry.dispatched)).toFixed(3),
+        dispatchedValue: money(entry.value).toFixed(2),
+        customers: String(entry.customers.size),
+        products: String(entry.products.size),
+      }));
+
+    // Warehouses with no DOs in the period still deserve a zero row when the
+    // report is not restricted to one warehouse.
+    if (!warehouseScope) {
+      const all = await prisma.warehouse.findMany({ where: { isActive: true }, orderBy: { name: "asc" } });
+      for (const warehouse of all) {
+        if (map.has(warehouse.code)) continue;
+        rows.push({
+          warehouseCode: warehouse.code,
+          warehouseName: warehouse.name,
+          doCount: "0",
+          doQtyMt: "0.000",
+          dispatchedMt: "0.000",
+          pendingMt: "0.000",
+          dispatchedValue: "0.00",
+          customers: "0",
+          products: "0",
+        });
+      }
+    }
+
+    return rows;
   },
 };
 
@@ -646,6 +891,8 @@ export const REPORTS: Record<ReportKey, ReportDefinition> = {
   "order-balance": orderBalance,
   "customer-sales": customerSales,
   "product-sales": productSales,
+  "customer-product-matrix": customerProductMatrix,
+  "warehouse-sales": warehouseSales,
   "pending-do": pendingDo,
   "stock-ledger": stockLedgerReport,
   "stock-summary": stockSummaryReport,

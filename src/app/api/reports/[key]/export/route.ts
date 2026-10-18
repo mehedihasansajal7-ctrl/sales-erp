@@ -37,17 +37,24 @@ export async function GET(
     }
 
     const report = getReport(key as ReportKey);
-    const rows = await report.run(
-      {
-        from,
-        to,
-        warehouseCode: url.searchParams.get("warehouseCode") ?? undefined,
-        customerCode: url.searchParams.get("customerCode") ?? undefined,
-        productCode: url.searchParams.get("productCode") ?? undefined,
-        options,
-      },
-      { id: user.id, name: user.name, role: user.role, warehouseCode: user.warehouseId },
-    );
+    const viewer = { id: user.id, name: user.name, role: user.role, warehouseCode: user.warehouseId };
+    const filter = {
+      from,
+      to,
+      warehouseCode: url.searchParams.get("warehouseCode") ?? undefined,
+      customerCode: url.searchParams.get("customerCode") ?? undefined,
+      productCode: url.searchParams.get("productCode") ?? undefined,
+      options,
+    };
+
+    // Reports such as Customer × Product resolve their columns from the data, so
+    // the exports have to use the same resolved definition.
+    const resolved =
+      report.columnsFor !== undefined
+        ? { ...report, columns: await report.columnsFor(filter, viewer) }
+        : report;
+
+    const rows = await resolved.run(filter, viewer);
 
     const meta = {
       title: report.title,
@@ -59,8 +66,8 @@ export async function GET(
     const stamp = `${key}-${toZonedDateString()}`;
 
     if (format === "csv") {
-      const columns = report.columns.map((column) => column.label);
-      const data = rows.map((row) => report.columns.map((column) => row[column.key] ?? ""));
+      const columns = resolved.columns.map((column) => column.label);
+      const data = rows.map((row) => resolved.columns.map((column) => row[column.key] ?? ""));
       return new NextResponse(rowsToCsv(columns, data), {
         headers: {
           "content-type": "text/csv; charset=utf-8",
@@ -70,7 +77,7 @@ export async function GET(
     }
 
     if (format === "pdf") {
-      const buffer = await reportsToPdf([{ report, rows }], meta);
+      const buffer = await reportsToPdf([{ report: resolved, rows }], meta);
       return new NextResponse(new Uint8Array(buffer), {
         headers: {
           "content-type": "application/pdf",
@@ -79,7 +86,7 @@ export async function GET(
       });
     }
 
-    const buffer = await reportsToExcel([{ report, rows }], meta);
+    const buffer = await reportsToExcel([{ report: resolved, rows }], meta);
     return new NextResponse(new Uint8Array(buffer), {
       headers: {
         "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

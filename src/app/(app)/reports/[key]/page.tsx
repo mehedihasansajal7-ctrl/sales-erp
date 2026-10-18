@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requirePermission } from "@/lib/auth";
 import { defaultFromZonedDateString, toZonedDateString, zonedToUtc } from "@/lib/dates";
-import { REPORTS, getReport, type ReportKey } from "@/server/services/report.service";
+import { REPORTS, getReport } from "@/server/services/report.service";
 import { listCustomers, listProducts, listWarehouses } from "@/server/services/master-data.service";
 import { formatBdt, formatMt, formatNumber } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -10,21 +10,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { DataTable, PageHeader, type Column } from "@/components/page-header";
 
 export const dynamic = "force-dynamic";
-
-const KEY_ICON: Record<ReportKey, "money" | "mt"> = {
-  "order-balance": "money",
-  "customer-sales": "money",
-  "product-sales": "money",
-  "pending-do": "mt",
-  "stock-ledger": "mt",
-  "stock-summary": "mt",
-  "stock-difference": "mt",
-  "rate-history": "money",
-  "dispatch-register": "mt",
-  "priority-override": "mt",
-  "priority-queue": "mt",
-  "salesperson-performance": "money",
-};
 
 export default async function ReportPage({
   params,
@@ -59,18 +44,21 @@ export default async function ReportPage({
     if (value) reportOptions[option.key] = value;
   }
 
+  const viewer = { id: user.id, name: user.name, role: user.role, warehouseCode: user.warehouseId };
+  const filter = {
+    from,
+    to: endOfTo,
+    warehouseCode: get("warehouseCode"),
+    customerCode: get("customerCode"),
+    productCode: get("productCode"),
+    options: reportOptions,
+  };
+
+  // Some reports (e.g. Customer × Product) build their columns from the data.
+  const reportColumns = report.columnsFor ? await report.columnsFor(filter, viewer) : report.columns;
+
   const [rows, warehouses, customers, products] = await Promise.all([
-    report.run(
-      {
-        from,
-        to: endOfTo,
-        warehouseCode: get("warehouseCode"),
-        customerCode: get("customerCode"),
-        productCode: get("productCode"),
-        options: reportOptions,
-      },
-      { id: user.id, name: user.name, role: user.role, warehouseCode: user.warehouseId },
-    ),
+    report.run(filter, viewer),
     listWarehouses(),
     listCustomers(),
     listProducts(),
@@ -85,7 +73,7 @@ export default async function ReportPage({
     ...reportOptions,
   });
 
-  const columns: Column<Record<string, string>>[] = report.columns.map((column) => ({
+  const columns: Column<Record<string, string>>[] = reportColumns.map((column) => ({
     key: column.key,
     label: column.label,
     align: column.align,
@@ -101,16 +89,21 @@ export default async function ReportPage({
   }));
 
   const numericTotal = (kind: "money" | "mt") => {
-    const keys = report.columns.filter((column) => column.kind === kind).map((column) => column.key);
+    const keys = reportColumns.filter((column) => column.kind === kind).map((column) => column.key);
     if (keys.length === 0) return null;
     const totals = keys.map((columnKey) => ({
-      column: report.columns.find((column) => column.key === columnKey)?.label ?? columnKey,
+      column: reportColumns.find((column) => column.key === columnKey)?.label ?? columnKey,
       value: rows.reduce((acc, row) => acc + (Number(row[columnKey]) || 0), 0),
     }));
     return totals;
   };
 
-  const totals = numericTotal(KEY_ICON[report.key] === "money" ? "money" : "mt");
+  // The footer totals follow the columns that are actually shown (the matrix can
+  // be displayed in MT or in BDT).
+  const totalKind: "money" | "mt" = reportColumns.some((column) => column.kind === "money")
+    ? "money"
+    : "mt";
+  const totals = numericTotal(totalKind);
 
   return (
     <div>

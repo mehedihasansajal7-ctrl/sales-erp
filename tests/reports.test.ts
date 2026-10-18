@@ -64,7 +64,8 @@ describe("Reports and exports", () => {
   it("declares every report with columns and a run function", () => {
     expect(REPORT_LIST.length).toBeGreaterThanOrEqual(10);
     for (const report of Object.values(REPORTS)) {
-      expect(report.columns.length).toBeGreaterThan(0);
+      // A report resolves its columns either statically or from the data.
+      expect(report.columns.length > 0 || report.columnsFor !== undefined).toBe(true);
       expect(typeof report.run).toBe("function");
       expect(report.title.length).toBeGreaterThan(0);
     }
@@ -126,18 +127,25 @@ describe("Reports and exports", () => {
   });
 
   it("customer-wise report can break down by product (and totals stay complete)", async () => {
-    const totals = await REPORTS["customer-sales"].run(period, {
-      id: ctx.admin.id,
-      name: ctx.admin.name,
-      role: "ADMIN",
-    });
+    const viewer = { id: ctx.admin.id, name: ctx.admin.name, role: "ADMIN" as const };
+
+    // The Product column only appears in the breakdown - the totals view must not
+    // show "All products" on every row (that confused the product owner).
+    const totalsColumns = await REPORTS["customer-sales"].columnsFor?.(period, viewer);
+    expect(totalsColumns?.some((column) => column.key === "productName")).toBe(false);
+    const breakdownColumns = await REPORTS["customer-sales"].columnsFor?.(
+      { ...period, options: { groupBy: "product" } },
+      viewer,
+    );
+    expect(breakdownColumns?.some((column) => column.key === "productName")).toBe(true);
+
+    const totals = await REPORTS["customer-sales"].run(period, viewer);
     const totalRow = totals.find((row) => row.customerName === "Report Trader");
     expect(totalRow?.orderedMt).toBe("100.000");
-    expect(totalRow?.productName).toBe("All products");
 
     const byProduct = await REPORTS["customer-sales"].run(
       { ...period, options: { groupBy: "product" } },
-      { id: ctx.admin.id, name: ctx.admin.name, role: "ADMIN" },
+      viewer,
     );
     const fert = byProduct.find(
       (row) => row.customerName === "Report Trader" && row.productName === "Urea Fertilizer",
@@ -155,8 +163,72 @@ describe("Reports and exports", () => {
     expect(breakdownTotal).toBe(100);
   });
 
-  it("product-wise report can break down by customer", async () => {
-    const byCustomer = await REPORTS["product-sales"].run(
+  it("Customer × Product matrix puts every product in its own column", async () => {
+    const report = REPORTS["customer-product-matrix"];
+    const viewer = { id: ctx.admin.id, name: ctx.admin.name, role: "ADMIN" as const };
+
+    const columns = await report.columnsFor?.(period, viewer);
+    expect(columns).toBeDefined();
+    expect(columns!.map((column) => column.key)).toEqual([
+      "customerCode",
+      "customerName",
+      "p_COAL-IMPORT",
+      "p_FERT-UREA",
+      "p_GRAIN-WHEAT",
+      "total",
+    ]);
+
+    const mt = await report.run(period, viewer);
+    const row = mt.find((entry) => entry.customerCode === "CUS-RPT");
+    expect(row?.["p_FERT-UREA"]).toBe("60.000");
+    expect(row?.["p_COAL-IMPORT"]).toBe("40.000");
+    expect(row?.total).toBe("100.000");
+
+    // Same matrix in BDT.
+    const value = await report.run({ ...period, options: { metric: "value" } }, viewer);
+    const valueRow = value.find((entry) => entry.customerCode === "CUS-RPT");
+    expect(valueRow?.["p_FERT-UREA"]).toBe("3000000.00");
+    expect(valueRow?.["p_COAL-IMPORT"]).toBe("800000.00");
+    expect(valueRow?.total).toBe("3800000.00");
+
+    const moneyColumns = await report.columnsFor?.(
+      { ...period, options: { metric: "value" } },
+      viewer,
+    );
+    expect(moneyColumns?.find((column) => column.key === "total")?.kind).toBe("money");
+  });
+
+  it("warehouse-wise report aggregates DOs, dispatched quantity and value", async () => {
+    const rows = await REPORTS["warehouse-sales"].run(period, {
+      id: ctx.admin.id,
+      name: ctx.admin.name,
+      role: "ADMIN",
+    });
+
+    const dhaka = rows.find((row) => row.warehouseCode === "WH-DHK");
+    expect(dhaka?.doCount).toBe("1");
+    expect(dhaka?.doQtyMt).toBe("100.000");
+    expect(dhaka?.dispatchedMt).toBe("100.000");
+    expect(dhaka?.pendingMt).toBe("0.000");
+    expect(dhaka?.dispatchedValue).toBe("3800000.00");
+    expect(dhaka?.customers).toBe("1");
+    expect(dhaka?.products).toBe("2");
+
+    // Warehouses without DOs still appear with zeros.
+    const ctg = rows.find((row) => row.warehouseCode === "WH-CTG");
+    expect(ctg?.doCount).toBe("0");
+
+    // A warehouse-scoped user only sees their own warehouse.
+    const scoped = await REPORTS["warehouse-sales"].run(period, {
+      id: ctx.warehouse.id,
+      name: ctx.warehouse.name,
+      role: "WAREHOUSE",
+      warehouseCode: "WH-DHK",
+    });
+    expect(scoped.map((row) => row.warehouseCode)).toEqual(["WH-DHK"]);
+  });
+
+  it("product-wise report can break down by customer", async () => {    const byCustomer = await REPORTS["product-sales"].run(
       { ...period, options: { groupBy: "customer" } },
       { id: ctx.admin.id, name: ctx.admin.name, role: "ADMIN" },
     );

@@ -103,9 +103,15 @@ export function OrderCreateForm({
 
       <Card>
         <CardHeader className="flex-row items-center justify-between">
-          <CardTitle>Product lines</CardTitle>
+          <div>
+            <CardTitle>Product lines</CardTitle>
+            <p className="mt-1 text-xs text-slate-500">
+              One order can carry several products — add a line per product. Each line gets its own
+              locked rate and the whole order is delivered together (across warehouses if needed).
+            </p>
+          </div>
           <Button type="button" variant="outline" size="sm" onClick={addLine}>
-            <Plus className="size-4" /> Add line
+            <Plus className="size-4" /> Add product
           </Button>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
