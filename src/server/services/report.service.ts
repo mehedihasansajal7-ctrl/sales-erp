@@ -139,7 +139,7 @@ const customerSales: ReportDefinition = {
   key: "customer-sales",
   title: "Customer-wise sales & delivery",
   description:
-    "Order count, value and delivered quantity per customer — or the exact product of every order line.",
+    "Order count, value and delivered quantity per customer — with the order numbers behind every row.",
   options: [
     {
       key: "groupBy",
@@ -153,9 +153,9 @@ const customerSales: ReportDefinition = {
   ],
   columns: CUSTOMER_SALES_BASE,
   /**
-   * The Product column only exists when a breakdown is chosen; the "order lines"
-   * view also carries the order number and date so every row can be traced.
-   * Showing "All products" on every row of the totals view was confusing.
+   * `orderNo` is part of every view: the exact order in the "order lines" view,
+   * and the list of contributing orders in the two aggregated views — so any
+   * figure can be traced back without leaving the report.
    */
   async columnsFor(filter) {
     const mode = filter.options?.groupBy;
@@ -173,14 +173,23 @@ const customerSales: ReportDefinition = {
       ];
     }
     if (mode === "product") {
+      // Summary: the order-number list replaces the bare "Orders" count - a
+      // reader can see which orders make up the row (the count is just the list
+      // length, so nothing is lost).
       return [
         CUSTOMER_SALES_BASE[0]!,
         CUSTOMER_SALES_BASE[1]!,
+        { key: "orderNo", label: "Order no" },
         { key: "productName", label: "Product" },
-        ...CUSTOMER_SALES_BASE.slice(2),
+        ...CUSTOMER_SALES_BASE.slice(3),
       ];
     }
-    return CUSTOMER_SALES_BASE;
+    return [
+      CUSTOMER_SALES_BASE[0]!,
+      CUSTOMER_SALES_BASE[1]!,
+      { key: "orderNo", label: "Order no" },
+      ...CUSTOMER_SALES_BASE.slice(2),
+    ];
   },
   async run(filter, user) {
     const mode =
@@ -226,17 +235,25 @@ const customerSales: ReportDefinition = {
       return rows;
     }
 
-    const map = new Map<string, { row: ReportRow; sort: number }>();
+    const map = new Map<string, { row: ReportRow; sort: number; orders: Set<string> }>();
     const blank = (customerCode: string, customerName: string, productName: string): ReportRow => ({
       customerCode,
       customerName,
       productName,
+      orderNo: "",
       orderCount: "0",
       orderedMt: "0.000",
       deliveredMt: "0.000",
       remainingMt: "0.000",
       orderValue: "0.00",
     });
+
+    /** Every order behind an aggregated row, so the figure can be traced. */
+    const formatOrderList = (orders: Set<string>): string => {
+      const list = [...orders].sort();
+      if (list.length <= 6) return list.join(", ");
+      return `${list.slice(0, 6).join(", ")} +${list.length - 6} more`;
+    };
 
     for (const order of orders) {
       if (mode === "product") {
@@ -245,7 +262,12 @@ const customerSales: ReportDefinition = {
           if (filter.productCode && item.productCode !== filter.productCode) continue;
           const key = `${order.customerId}|${item.productCode}`;
           const entry =
-            map.get(key) ?? { row: blank(order.customerId, order.customer.name, item.product.name), sort: 0 };
+            map.get(key) ?? {
+              row: blank(order.customerId, order.customer.name, item.product.name),
+              sort: 0,
+              orders: new Set<string>(),
+            };
+          entry.orders.add(order.orderNo);
           entry.row.orderCount = String(Number(entry.row.orderCount) + 1);
           entry.row.orderedMt = qty(dec(entry.row.orderedMt).plus(dec(item.qtyMt))).toFixed(3);
           entry.row.deliveredMt = qty(dec(entry.row.deliveredMt).plus(dec(item.deliveredMt))).toFixed(3);
@@ -260,9 +282,11 @@ const customerSales: ReportDefinition = {
         // Totals per customer (all products).
         const entry =
           map.get(order.customerId) ?? {
-            row: blank(order.customerId, order.customer.name, "All products"),
+            row: blank(order.customerId, order.customer.name, ""),
             sort: 0,
+            orders: new Set<string>(),
           };
+        entry.orders.add(order.orderNo);
         entry.row.orderCount = String(Number(entry.row.orderCount) + 1);
         for (const item of order.items) {
           if (filter.productCode && item.productCode !== filter.productCode) continue;
@@ -280,7 +304,7 @@ const customerSales: ReportDefinition = {
 
     return [...map.values()]
       .sort((a, b) => b.sort - a.sort || String(a.row.customerName).localeCompare(String(b.row.customerName)))
-      .map((entry) => entry.row);
+      .map((entry) => ({ ...entry.row, orderNo: formatOrderList(entry.orders) }));
   },
 };
 

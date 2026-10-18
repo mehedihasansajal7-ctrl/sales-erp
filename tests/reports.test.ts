@@ -142,6 +142,8 @@ describe("Reports and exports", () => {
     const totals = await REPORTS["customer-sales"].run(period, viewer);
     const totalRow = totals.find((row) => row.customerName === "Report Trader");
     expect(totalRow?.orderedMt).toBe("100.000");
+    // The order numbers behind the aggregated row are part of the row.
+    expect(totalRow?.orderNo).toMatch(/ORD-\d{4}-\d{6}/);
 
     const byProduct = await REPORTS["customer-sales"].run(
       { ...period, options: { groupBy: "product" } },
@@ -155,6 +157,7 @@ describe("Reports and exports", () => {
     );
     expect(fert?.orderedMt).toBe("60.000");
     expect(coal?.orderedMt).toBe("40.000");
+    expect(fert?.orderNo).toMatch(/ORD-\d{4}-\d{6}/);
 
     // The breakdown must still add up to the same total.
     const breakdownTotal = byProduct

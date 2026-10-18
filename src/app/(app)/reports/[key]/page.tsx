@@ -88,22 +88,20 @@ export default async function ReportPage({
     },
   }));
 
-  const numericTotal = (kind: "money" | "mt") => {
-    const keys = reportColumns.filter((column) => column.kind === kind).map((column) => column.key);
-    if (keys.length === 0) return null;
-    const totals = keys.map((columnKey) => ({
-      column: reportColumns.find((column) => column.key === columnKey)?.label ?? columnKey,
-      value: rows.reduce((acc, row) => acc + (Number(row[columnKey]) || 0), 0),
+  // Footer totals: every quantity and money column is summed (balances and
+  // averages are not - adding "balance after" rows would be nonsense), and each
+  // total is formatted with the unit of its own column. Previously only one kind
+  // was summed and a dynamic money column (e.g. "Line value (৳)") fell back to the
+  // MT formatter.
+  const totals = reportColumns
+    .filter((column) => column.kind === "mt" || column.kind === "money")
+    .filter((column) => !/balance|after|avg/i.test(column.key))
+    .map((column) => ({
+      key: column.key,
+      label: column.label,
+      kind: column.kind as "mt" | "money",
+      value: rows.reduce((acc, row) => acc + (Number(row[column.key]) || 0), 0),
     }));
-    return totals;
-  };
-
-  // The footer totals follow the columns that are actually shown (the matrix can
-  // be displayed in MT or in BDT).
-  const totalKind: "money" | "mt" = reportColumns.some((column) => column.kind === "money")
-    ? "money"
-    : "mt";
-  const totals = numericTotal(totalKind);
 
   return (
     <div>
@@ -251,17 +249,13 @@ export default async function ReportPage({
         rowKey={(row, index) => `${report.key}-${index}`}
         emptyMessage="No data for the selected filters."
         footer={
-          totals ? (
-            <div className="flex flex-wrap gap-4">
+          totals.length > 0 ? (
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
               {totals.map((total) => (
-                <span key={total.column} className="text-sm">
-                  <span className="text-slate-500">{total.column} total: </span>
+                <span key={total.key} className="text-sm">
+                  <span className="text-slate-500">{total.label} total: </span>
                   <span className="font-semibold tabular-nums">
-                    {report.columns.find((column) => column.label === total.column)?.kind === "money"
-                      ? formatBdt(total.value)
-                      : /MT/i.test(total.column)
-                        ? formatNumber(total.value, 3)
-                        : formatMt(total.value)}
+                    {total.kind === "money" ? formatBdt(total.value) : formatMt(total.value)}
                   </span>
                 </span>
               ))}
