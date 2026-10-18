@@ -163,8 +163,34 @@ describe("Reports and exports", () => {
     expect(breakdownTotal).toBe(100);
   });
 
-  it("Customer × Product matrix puts every product in its own column", async () => {
-    const report = REPORTS["customer-product-matrix"];
+  it("detail view lists every order line with its exact product, ordered by order number", async () => {
+    const viewer = { id: ctx.admin.id, name: ctx.admin.name, role: "ADMIN" as const };
+    const filter = { ...period, options: { groupBy: "order" } };
+
+    const columns = await REPORTS["customer-sales"].columnsFor?.(filter, viewer);
+    const keys = columns?.map((column) => column.key) ?? [];
+    expect(keys).toContain("orderNo");
+    expect(keys).toContain("productName");
+    expect(keys).not.toContain("orderCount");
+
+    const rows = await REPORTS["customer-sales"].run(filter, viewer);
+    expect(rows.length).toBeGreaterThanOrEqual(2);
+
+    const fert = rows.find((row) => row.productName === "Urea Fertilizer");
+    expect(fert?.orderNo).toMatch(/^ORD-\d{4}-\d{6}$/);
+    expect(fert?.orderedMt).toBe("60.000");
+    expect(fert?.orderValue).toBe("3000000.00");
+    expect(fert?.customerName).toBe("Report Trader");
+
+    const coal = rows.find((row) => row.productName === "Imported Coal");
+    expect(coal?.orderedMt).toBe("40.000");
+
+    // Rows follow the order number.
+    const orderNos = rows.map((row) => row.orderNo);
+    expect([...orderNos].sort()).toEqual(orderNos);
+  });
+
+  it("Customer × Product matrix puts every product in its own column", async () => {    const report = REPORTS["customer-product-matrix"];
     const viewer = { id: ctx.admin.id, name: ctx.admin.name, role: "ADMIN" as const };
 
     const columns = await report.columnsFor?.(period, viewer);

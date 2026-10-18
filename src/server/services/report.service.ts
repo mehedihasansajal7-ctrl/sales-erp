@@ -139,34 +139,57 @@ const customerSales: ReportDefinition = {
   key: "customer-sales",
   title: "Customer-wise sales & delivery",
   description:
-    "Order count, value and delivered quantity per customer — optionally broken down by product.",
+    "Order count, value and delivered quantity per customer — or the exact product of every order line.",
   options: [
     {
       key: "groupBy",
       label: "Breakdown",
       choices: [
         { value: "customer", label: "Customer only (totals)" },
-        { value: "product", label: "Customer → Product" },
+        { value: "product", label: "Customer → Product (summary)" },
+        { value: "order", label: "Customer → Order lines (order no + product)" },
       ],
     },
   ],
   columns: CUSTOMER_SALES_BASE,
   /**
-   * The Product column only exists in the product breakdown; showing "All
-   * products" on every row in the totals view was confusing.
+   * The Product column only exists when a breakdown is chosen; the "order lines"
+   * view also carries the order number and date so every row can be traced.
+   * Showing "All products" on every row of the totals view was confusing.
    */
   async columnsFor(filter) {
-    const byProduct = filter.options?.groupBy === "product";
-    if (!byProduct) return CUSTOMER_SALES_BASE;
-    return [
-      CUSTOMER_SALES_BASE[0]!,
-      CUSTOMER_SALES_BASE[1]!,
-      { key: "productName", label: "Product" },
-      ...CUSTOMER_SALES_BASE.slice(2),
-    ];
+    const mode = filter.options?.groupBy;
+    if (mode === "order") {
+      return [
+        { key: "orderNo", label: "Order no" },
+        { key: "orderDate", label: "Order date" },
+        { key: "customerCode", label: "Code" },
+        { key: "customerName", label: "Customer" },
+        { key: "productName", label: "Product" },
+        { key: "orderedMt", label: "Ordered (MT)", kind: "mt", align: "right" },
+        { key: "deliveredMt", label: "Delivered (MT)", kind: "mt", align: "right" },
+        { key: "remainingMt", label: "Remaining (MT)", kind: "mt", align: "right" },
+        { key: "orderValue", label: "Line value (৳)", kind: "money", align: "right" },
+      ];
+    }
+    if (mode === "product") {
+      return [
+        CUSTOMER_SALES_BASE[0]!,
+        CUSTOMER_SALES_BASE[1]!,
+        { key: "productName", label: "Product" },
+        ...CUSTOMER_SALES_BASE.slice(2),
+      ];
+    }
+    return CUSTOMER_SALES_BASE;
   },
   async run(filter, user) {
-    const byProduct = filter.options?.groupBy === "product";
+    const mode =
+      filter.options?.groupBy === "product"
+        ? "product"
+        : filter.options?.groupBy === "order"
+          ? "order"
+          : "customer";
+
     const orders = await prisma.order.findMany({
       where: {
         orderDate: { gte: filter.from, lte: filter.to },
@@ -175,7 +198,33 @@ const customerSales: ReportDefinition = {
         ...(filter.productCode ? { items: { some: { productCode: filter.productCode } } } : {}),
       },
       include: { items: { include: { product: true } }, customer: true },
+      orderBy: { orderNo: "asc" },
     });
+
+    /**
+     * Detail view: one row per order line, in order-number order, with the exact
+     * product name — so a reader can trace every figure back to its order.
+     */
+    if (mode === "order") {
+      const rows: ReportRow[] = [];
+      for (const order of orders) {
+        for (const item of order.items) {
+          if (filter.productCode && item.productCode !== filter.productCode) continue;
+          rows.push({
+            orderNo: order.orderNo,
+            orderDate: toZonedDateString(order.orderDate),
+            customerCode: order.customerId,
+            customerName: order.customer.name,
+            productName: item.product.name,
+            orderedMt: qty(item.qtyMt).toFixed(3),
+            deliveredMt: qty(item.deliveredMt).toFixed(3),
+            remainingMt: qty(dec(item.qtyMt).minus(dec(item.deliveredMt))).toFixed(3),
+            orderValue: money(item.lineValue).toFixed(2),
+          });
+        }
+      }
+      return rows;
+    }
 
     const map = new Map<string, { row: ReportRow; sort: number }>();
     const blank = (customerCode: string, customerName: string, productName: string): ReportRow => ({
@@ -190,7 +239,7 @@ const customerSales: ReportDefinition = {
     });
 
     for (const order of orders) {
-      if (byProduct) {
+      if (mode === "product") {
         // One row per (customer, product) — answers "what did this customer buy?".
         for (const item of order.items) {
           if (filter.productCode && item.productCode !== filter.productCode) continue;

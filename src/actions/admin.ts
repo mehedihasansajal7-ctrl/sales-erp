@@ -51,7 +51,7 @@ export async function saveCustomerAction(
   try {
     const user = await requirePermission("admin.customers");
     const input = customerSchema.parse({
-      code: str(formData, "code") || str(formData, "existingCode"),
+      code: str(formData, "existingCode"),
       name: str(formData, "name"),
       phone: str(formData, "phone"),
       address: str(formData, "address"),
@@ -60,7 +60,9 @@ export async function saveCustomerAction(
     });
     await saveCustomer(input, { id: user.id, name: user.name, role: user.role }, await getClientIp());
     revalidatePath("/admin/customers");
-    return actionOk(`Customer ${input.code} saved.`);
+    return actionOk(
+      input.code ? `Customer ${input.code} saved.` : "Customer created — its code was generated automatically.",
+    );
   } catch (error) {
     return actionFailure(error);
   }

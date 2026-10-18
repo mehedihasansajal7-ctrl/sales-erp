@@ -181,6 +181,33 @@ describe("Admin — users, roles and master data", () => {
     expect(users[0]?.warehouseName).toBeNull();
   });
 
+  it("generates a customer code that nobody can edit", async () => {
+    const actor = { id: ctx.admin.id, name: ctx.admin.name, role: "ADMIN" as const };
+
+    const first = await saveCustomer({ name: "Auto Code Trader" }, actor);
+    expect(first.code).toMatch(/^CUS-\d{6}$/);
+
+    const second = await saveCustomer({ name: "Auto Code Trader 2" }, actor);
+    expect(second.code).toMatch(/^CUS-\d{6}$/);
+    expect(Number(second.code.split("-")[1])).toBe(Number(first.code.split("-")[1]) + 1);
+
+    // Saving the same record again (the edit form only carries the hidden code)
+    // updates it in place and never renames it.
+    const updated = await saveCustomer(
+      { code: first.code, name: "Auto Code Trader (renamed)", isActive: true },
+      actor,
+    );
+    expect(updated.code).toBe(first.code);
+    expect(updated.name).toBe("Auto Code Trader (renamed)");
+    expect(await prisma.customer.count({ where: { code: first.code } })).toBe(1);
+
+    // ...and the audit trail records who created it.
+    const audit = await prisma.auditLog.findFirst({
+      where: { entity: "customer", entityId: first.code, action: "CREATE" },
+    });
+    expect(audit).not.toBeNull();
+  });
+
   it("saves master data and audits it (product / customer / warehouse)", async () => {
     await saveProduct(
       { code: "COAL-PC", name: "Petcoke", category: "Coal", unit: "MT", isActive: true },
