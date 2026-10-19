@@ -71,7 +71,7 @@ test.describe("order lifecycle", () => {
     // Remember which order is being approved: once it is approved the card leaves
     // the queue, so the disappearing card *is* the confirmation (a toast is fired
     // too, but the component unmounts as the list refreshes).
-    const orderNo = (await page.getByRole("link", { name: /^ORD-\d{4}-\d{6}$/ }).first().innerText()).trim();
+    const orderNo = (await page.getByRole("link", { name: /^SO-\d{2}-\d{2}-\d{4}-\d{3}$/ }).first().innerText()).trim();
 
     // If the customer is over its credit limit the button stays disabled until the
     // Sales Ops override is ticked and a reason is written (Rule 2). The demo data

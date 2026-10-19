@@ -6,6 +6,7 @@ import { actor, writeAudit } from "@/lib/audit";
 import { toZonedDateString, zonedToUtc } from "@/lib/dates";
 import { assertDoTransition, assertOrderTransition, ORDER_STATUS_LABELS } from "@/lib/state-machines";
 import { getSettings, SETTING_KEYS } from "@/lib/settings";
+import { nextChallanNo } from "@/lib/numbering";
 import { assertCustomerPriority } from "@/server/services/priority.service";
 import { dispatchOutStock } from "@/server/services/stock.service";
 import { toDoRow } from "@/server/services/delivery-order.service";
@@ -27,7 +28,7 @@ export type RecordDispatchInput = {
   truckNo: string;
   driverName: string;
   driverPhone: string;
-  challanNo: string;
+  challanNo?: string;
   loadingDate: string;
   dispatchDate: string;
   remarks?: string;
@@ -59,9 +60,14 @@ export async function recordDispatch(input: RecordDispatchInput, user: ServiceAc
       );
     }
 
-    // Duplicate challan number (unique index is the second safety net).
-    const duplicate = await tx.dispatch.findUnique({ where: { challanNo: input.challanNo } });
-    if (duplicate) throw errors.duplicateChallan(input.challanNo);
+    // A challan number may be supplied (a physical challan already printed); when
+    // it is left empty the system generates CH-DD-MM-YYYY-NNN below. Either way it
+    // has to be unique (unique index is the second safety net).
+    const suppliedChallan = input.challanNo?.trim() ?? "";
+    if (suppliedChallan) {
+      const duplicate = await tx.dispatch.findUnique({ where: { challanNo: suppliedChallan } });
+      if (duplicate) throw errors.duplicateChallan(suppliedChallan);
+    }
 
     // Rule 3 — re-check the queue. A DO that was created with a Sales Ops
     // override keeps that override for its later dispatches.
@@ -130,13 +136,16 @@ export async function recordDispatch(input: RecordDispatchInput, user: ServiceAc
       );
     }
 
+    // Auto-generated challan number, dated with the dispatch day.
+    const challanNo = suppliedChallan || (await nextChallanNo(tx, dispatchDate));
+
     const dispatch = await tx.dispatch.create({
       data: {
         doId: deliveryOrder.id,
         truckNo: input.truckNo,
         driverName: input.driverName,
         driverPhone: input.driverPhone,
-        challanNo: input.challanNo,
+        challanNo,
         loadingDate,
         dispatchDate,
         remarks: input.remarks ?? null,
@@ -158,7 +167,7 @@ export async function recordDispatch(input: RecordDispatchInput, user: ServiceAc
         qtyMt: requested,
         refType: "dispatch",
         refId: dispatch.id,
-        note: `${deliveryOrder.doNo} / challan ${input.challanNo}`,
+        note: `${deliveryOrder.doNo} / challan ${challanNo}`,
         userId: user.id,
         userName: user.name,
         ip,
@@ -250,7 +259,7 @@ export async function recordDispatch(input: RecordDispatchInput, user: ServiceAc
           orderNo: deliveryOrder.order.orderNo,
           customer: deliveryOrder.order.customerId,
           warehouse: deliveryOrder.warehouseId,
-          challanNo: input.challanNo,
+          challanNo,
           truckNo: input.truckNo,
           driverName: input.driverName,
           driverPhone: input.driverPhone,

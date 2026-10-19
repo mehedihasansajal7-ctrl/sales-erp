@@ -4,7 +4,7 @@ import { dec, money, qty } from "@/lib/decimal";
 import { errors } from "@/lib/errors";
 import { actor, writeAudit } from "@/lib/audit";
 import { formatDateTime, zonedToUtc } from "@/lib/dates";
-import { nextDocNo } from "@/lib/numbering";
+import { nextOrderNo } from "@/lib/numbering";
 import { assertOrderTransition, ORDER_STATUS_LABELS } from "@/lib/state-machines";
 import { getSettings, SETTING_KEYS } from "@/lib/settings";
 import { findCurrentRate } from "@/server/services/rate.service";
@@ -169,7 +169,7 @@ export async function createOrder(input: CreateOrderInput, user: ServiceActor, i
     });
     const orderSeq = (maxSeq._max.orderSeq ?? 0) + 1;
 
-    const orderNo = await nextDocNo("order", tx, at);
+    const orderNo = await nextOrderNo(tx, at);
 
     const order = await tx.order.create({
       data: {

@@ -3,7 +3,7 @@ import prisma from "@/lib/prisma";
 import { dec, qty } from "@/lib/decimal";
 import { errors } from "@/lib/errors";
 import { actor, writeAudit } from "@/lib/audit";
-import { nextDocNo } from "@/lib/numbering";
+import { nextDeliveryOrderNo } from "@/lib/numbering";
 import { assertDoTransition, DO_STATUS_LABELS } from "@/lib/state-machines";
 import { assertCustomerPriority } from "@/server/services/priority.service";
 import { reserveStock } from "@/server/services/stock.service";
@@ -164,7 +164,7 @@ export async function createDeliveryOrder(input: CreateDoInput, user: ServiceAct
 
     // 4. Create the DO header and lines, then reserve the stock against the DO
     //    itself so every ledger row is traceable to a delivery order.
-    const doNo = await nextDocNo("do", tx);
+    const doNo = await nextDeliveryOrderNo(tx, order.orderNo);
 
     const created = await tx.deliveryOrder.create({
       data: {

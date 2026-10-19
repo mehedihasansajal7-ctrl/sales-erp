@@ -1,4 +1,4 @@
-import { zonedYear } from "@/lib/dates";
+import { toZonedDateString, zonedYear } from "@/lib/dates";
 import type { Tx } from "@/lib/prisma";
 import prisma from "@/lib/prisma";
 
@@ -22,7 +22,7 @@ const PREFIX_ENV: Record<SequenceKind, string | undefined> = {
 };
 
 const DEFAULT_PREFIX: Record<SequenceKind, string> = {
-  order: "ORD",
+  order: "SO",
   do: "DO",
   transfer: "TRF",
   count: "PC",
@@ -76,6 +76,54 @@ export async function nextMasterCode(
 ): Promise<string> {
   const seq = await nextSequenceValue(`${kind}:code`, tx);
   return `${prefixFor(kind)}-${String(seq).padStart(6, "0")}`;
+}
+
+/** DD-MM-YYYY in APP_TIMEZONE — the human way to write a date in Bangladesh. */
+function dayStamp(at: Date): string {
+  const [year, month, day] = toZonedDateString(at).split("-");
+  return `${day}-${month}-${year}`;
+}
+
+/**
+ * Sales order number — **date based**, because the date matters on the document:
+ *   SO-19-10-2026-001   (3-digit counter per day, Asia/Dhaka)
+ * The counter is atomic, so two salespeople ordering at the same second never
+ * collide.
+ */
+export async function nextOrderNo(
+  tx: Tx | typeof prisma = prisma,
+  at: Date = new Date(),
+): Promise<string> {
+  const day = toZonedDateString(at);
+  const seq = await nextSequenceValue(`order:${day}`, tx);
+  return `${prefixFor("order")}-${dayStamp(at)}-${String(seq).padStart(3, "0")}`;
+}
+
+/**
+ * Delivery order number — **derived from its sales order**, so anyone holding a
+ * DO can see which SO it belongs to:
+ *   SO-19-10-2026-001-DO-01, SO-19-10-2026-001-DO-02 …
+ */
+export async function nextDeliveryOrderNo(
+  tx: Tx | typeof prisma,
+  orderNo: string,
+): Promise<string> {
+  const seq = await nextSequenceValue(`do:${orderNo}`, tx);
+  return `${orderNo}-DO-${String(seq).padStart(2, "0")}`;
+}
+
+/**
+ * Challan number — **date based** (a challan is a dated transport document):
+ *   CH-19-10-2026-001
+ */
+export async function nextChallanNo(
+  tx: Tx | typeof prisma = prisma,
+  at: Date = new Date(),
+): Promise<string> {
+  const day = toZonedDateString(at);
+  const seq = await nextSequenceValue(`challan:${day}`, tx);
+  const prefix = process.env.CHALLAN_NO_PREFIX || "CH";
+  return `${prefix}-${dayStamp(at)}-${String(seq).padStart(3, "0")}`;
 }
 
 /** Yearly document number (order, DO, transfer, count). */

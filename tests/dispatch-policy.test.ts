@@ -24,6 +24,7 @@ describe("Who may change the dispatched quantity", () => {
         { code: "CUS-POL2", name: "Policy Trader 2" },
         { code: "CUS-POL3", name: "Policy Trader 3" },
         { code: "CUS-POL4", name: "Policy Trader 4" },
+        { code: "CUS-POL5", name: "Policy Trader 5" },
       ],
     });
   });
@@ -198,6 +199,37 @@ describe("Who may change the dispatched quantity", () => {
         { id: ctx.ops.id, name: ctx.ops.name, role: "SALES_OPS" },
       ),
     ).rejects.toThrowError(/only 15\.000 MT can be allocated/);
+  });
+
+  it("generates a dated challan number when the warehouse leaves it empty", async () => {
+    const order = await createApprovedOrder(ctx, "CUS-POL5", [
+      { productCode: "GRAIN-WHEAT", qtyMt: "5.000" },
+    ]);
+    const items = await orderItemsOf(order.id);
+    const created = await createDo(ctx, order.id, "WH-DHK", [
+      { orderItemId: items[0]!.id, qtyMt: "5.000" },
+    ]);
+    const doItems = await doItemsOf(created.deliveryOrder.id);
+
+    const result = await recordDispatch(
+      {
+        doId: created.deliveryOrder.id,
+        truckNo: "T-9",
+        driverName: "Auto Challan",
+        driverPhone: "01711-000000",
+        // no challanNo: the system must generate CH-DD-MM-YYYY-NNN
+        loadingDate: new Date().toISOString(),
+        dispatchDate: new Date().toISOString(),
+        items: [{ doItemId: doItems[0]!.id, qtyMt: "5.000" }],
+      },
+      { id: ctx.warehouse.id, name: ctx.warehouse.name, role: "WAREHOUSE", warehouseCode: "WH-DHK" },
+    );
+
+    expect(result.dispatch.challanNo).toMatch(/^CH-\d{2}-\d{2}-\d{4}-\d{3}$/);
+    const stored = await prisma.dispatch.findUniqueOrThrow({
+      where: { challanNo: result.dispatch.challanNo },
+    });
+    expect(stored.doId).toBe(created.deliveryOrder.id);
   });
 
   it("refuses to edit a DO once anything has been dispatched", async () => {

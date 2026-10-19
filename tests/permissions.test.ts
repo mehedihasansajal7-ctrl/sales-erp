@@ -155,7 +155,7 @@ describe("Permissions and data scoping", () => {
       name: ctx.sales.name,
       role: "SALES",
     });
-    expect(own.orderNo).toMatch(/^ORD-/);
+    expect(own.orderNo).toMatch(/^SO-\d{2}-\d{2}-\d{4}-\d{3}$/);
   });
 
   it("exposes a stable error shape for forbidden actions", () => {

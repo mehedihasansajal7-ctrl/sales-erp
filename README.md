@@ -127,6 +127,20 @@ SQL.
    `audit_logs` row. The table is append-only: a database trigger rejects `UPDATE`, `DELETE` and
    `TRUNCATE`.
 
+### Document numbers (all generated, no typing)
+
+| Document | Format | Example |
+|---|---|---|
+| Sales order (SO) | `SO-DD-MM-YYYY-NNN` (per-day counter) | `SO-19-10-2026-001` |
+| Delivery order (DO) | `<SO>-DO-NN` (derived from its sales order) | `SO-19-10-2026-001-DO-02` |
+| Challan | `CH-DD-MM-YYYY-NNN` (per-day counter, auto on dispatch) | `CH-19-10-2026-004` |
+| Customer code | `CUS-NNNNNN` (never editable) | `CUS-000001` |
+| Transfer / stock count | `TRF-YYYY-NNNNNN` / `PC-YYYY-NNNNNN` | `TRF-2026-000007` |
+
+The counters live in the `sequences` table and are incremented with one atomic
+`INSERT … ON CONFLICT DO UPDATE … RETURNING`, so simultaneous users can never receive the same number.
+The date part always comes from **Asia/Dhaka**.
+
 ---
 
 ## 4. Screens

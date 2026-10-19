@@ -143,7 +143,7 @@ describe("Reports and exports", () => {
     const totalRow = totals.find((row) => row.customerName === "Report Trader");
     expect(totalRow?.orderedMt).toBe("100.000");
     // The order numbers behind the aggregated row are part of the row.
-    expect(totalRow?.orderNo).toMatch(/ORD-\d{4}-\d{6}/);
+    expect(totalRow?.orderNo).toMatch(/SO-\d{2}-\d{2}-\d{4}-\d{3}/);
 
     const byProduct = await REPORTS["customer-sales"].run(
       { ...period, options: { groupBy: "product" } },
@@ -157,7 +157,7 @@ describe("Reports and exports", () => {
     );
     expect(fert?.orderedMt).toBe("60.000");
     expect(coal?.orderedMt).toBe("40.000");
-    expect(fert?.orderNo).toMatch(/ORD-\d{4}-\d{6}/);
+    expect(fert?.orderNo).toMatch(/SO-\d{2}-\d{2}-\d{4}-\d{3}/);
 
     // The breakdown must still add up to the same total.
     const breakdownTotal = byProduct
@@ -180,7 +180,7 @@ describe("Reports and exports", () => {
     expect(rows.length).toBeGreaterThanOrEqual(2);
 
     const fert = rows.find((row) => row.productName === "Urea Fertilizer");
-    expect(fert?.orderNo).toMatch(/^ORD-\d{4}-\d{6}$/);
+    expect(fert?.orderNo).toMatch(/^SO-\d{2}-\d{2}-\d{4}-\d{3}$/);
     expect(fert?.orderedMt).toBe("60.000");
     expect(fert?.orderValue).toBe("3000000.00");
     expect(fert?.customerName).toBe("Report Trader");
@@ -315,7 +315,7 @@ describe("Reports and exports", () => {
       name: ctx.admin.name,
       role: "ADMIN",
     });
-    expect(orderPrint.meta.docNo).toMatch(/^ORD-/);
+    expect(orderPrint.meta.docNo).toMatch(/^SO-/);
     expect(JSON.stringify(orderPrint.tables)).toContain("100.000");
 
     const doPrint = await buildDoPrintable(doId, {
@@ -323,7 +323,7 @@ describe("Reports and exports", () => {
       name: ctx.admin.name,
       role: "ADMIN",
     });
-    expect(doPrint.meta.docNo).toMatch(/^DO-/);
+    expect(doPrint.meta.docNo).toMatch(/-DO-\d{2}$/);
 
     const challanPrint = await buildChallanPrintable(dispatchId);
     expect(challanPrint.meta.docNo).toBe("CH-RPT-1");

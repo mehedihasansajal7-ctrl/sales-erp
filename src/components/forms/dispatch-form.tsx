@@ -96,12 +96,11 @@ export function DispatchForm({
             <FieldError state={state} name="truckNo" />
           </Field>
           <Field
-            label="Challan number"
+            label="Challan number (optional)"
             htmlFor="challanNo"
-            hint="Must be unique — a duplicate challan is rejected."
-            required
+            hint="Leave it empty and the system generates a dated challan number (CH-19-10-2026-001). Type one only when a physical challan already carries its own number."
           >
-            <Input id="challanNo" name="challanNo" placeholder="CH-2026-000123" required />
+            <Input id="challanNo" name="challanNo" placeholder="Auto — CH-19-10-2026-001" />
             <FieldError state={state} name="challanNo" />
           </Field>
           <Field label="Driver name" htmlFor="driverName" required>

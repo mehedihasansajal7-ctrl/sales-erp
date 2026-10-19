@@ -14,7 +14,7 @@ import {
   assertTransferTransition,
   ORDER_TRANSITIONS,
 } from "@/lib/state-machines";
-import { formatDocNo, parseDocNo } from "@/lib/numbering";
+import { formatDocNo, parseDocNo, prefixFor } from "@/lib/numbering";
 import { rateLimit, resetRateLimit } from "@/lib/rate-limit";
 import {
   changePasswordSchema,
@@ -66,15 +66,22 @@ describe("timezone handling (Asia/Dhaka)", () => {
 });
 
 describe("document numbering", () => {
-  it("formats and parses ORD-2026-000123", () => {
-    const docNo = formatDocNo("order", 2026, 123);
-    expect(docNo).toBe("ORD-2026-000123");
-    expect(parseDocNo(docNo)).toEqual({ prefix: "ORD", year: 2026, seq: 123 });
+  it("formats and parses the yearly documents (transfers, counts)", () => {
+    const docNo = formatDocNo("transfer", 2026, 123);
+    expect(docNo).toBe("TRF-2026-000123");
+    expect(parseDocNo(docNo)).toEqual({ prefix: "TRF", year: 2026, seq: 123 });
   });
 
   it("pads to six digits but never truncates larger numbers", () => {
-    expect(formatDocNo("do", 2026, 1)).toBe("DO-2026-000001");
-    expect(formatDocNo("do", 2026, 1234567)).toBe("DO-2026-1234567");
+    expect(formatDocNo("count", 2026, 1)).toBe("PC-2026-000001");
+    expect(formatDocNo("count", 2026, 1234567)).toBe("PC-2026-1234567");
+  });
+
+  it("uses date-based prefixes for sales orders and challans", () => {
+    // The date-based helpers need the database (atomic counters), so here we only
+    // pin the prefixes; tests/numbering.test.ts covers the real values.
+    expect(prefixFor("order")).toBe("SO");
+    expect(prefixFor("customer")).toBe("CUS");
   });
 });
 

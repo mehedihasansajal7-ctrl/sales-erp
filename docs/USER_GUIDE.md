@@ -42,6 +42,11 @@ product and date filters. The dashboard also charts the last 30 days.
 > If a product shows **“Not published”** in the dashboard, sales will be blocked with
 > *“No published rate for product X”* until you publish one.
 
+**Document numbers** are generated for you — nothing is typed:
+`sales order SO-19-10-2026-001` → its delivery orders `SO-19-10-2026-001-DO-01`, `-DO-02` → each
+dispatch gets a dated challan `CH-19-10-2026-001`. The date part is always the **Asia/Dhaka** date, so
+a back-dated order or a dispatch loaded after midnight gets the correct day.
+
 ---
 
 ## 2. Salesperson — create and track orders
@@ -167,8 +172,9 @@ You only ever see **your own warehouse**. You cannot create or change a delivery
 2. **The quantity is not yours to change.** Sales Operations decides it when creating the delivery
    order; the screen shows it (e.g. `30.000 MT`) read-only. For a smaller shipment, ask Sales
    Operations to create a separate delivery order.
-3. Fill **Truck / vehicle number**, **Challan number** (must be unique), **Driver name**,
-   **Driver phone**, **Loading date**, **Dispatch date**.
+3. Fill **Truck / vehicle number**, **Challan number** (leave it empty and the system generates a
+   dated one, `CH-19-10-2026-001`; type a value only if a physical challan already carries its own
+   number), **Driver name**, **Driver phone**, **Loading date**, **Dispatch date**.
    * The **dispatch date can never be earlier than the loading date** — the picker will not offer an
      earlier day, and the form blocks it.
 4. Press **Record dispatch**. The system re-checks the customer priority queue at this moment.

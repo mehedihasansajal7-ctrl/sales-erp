@@ -375,7 +375,12 @@ export const dispatchCreateSchema = z
       .trim()
       .min(6, "Enter a valid driver phone number.")
       .max(30, "Enter a valid driver phone number."),
-    challanNo: trimmedString(1, 60),
+    challanNo: z
+      .string()
+      .trim()
+      .max(60)
+      .optional()
+      .or(z.literal("").transform(() => undefined)),
     loadingDate: zonedDateTimeSchema,
     dispatchDate: zonedDateTimeSchema,
     remarks: z

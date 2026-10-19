@@ -144,3 +144,15 @@ Everything above was re-run after the last code change, on this machine, against
 * **Machine note:** `C:` kept filling up and took the Docker engine down with it. Docker's 9.3 GB data
   disk was moved to `D:\docker\data` (`%LOCALAPPDATA%\Docker\wsl\disk` is a junction to it); all
   images and volumes were preserved and `C:` now has about 10.6 GB free. See `HUMAN_TODO.md` section 6.
+
+## Document numbering (2026-10-19)
+
+* **Sales order** is now date based: `SO-19-10-2026-001` (3-digit counter per Asia/Dhaka day,
+  atomic in the `sequences` table). Prefix is still configurable (`ORDER_NO_PREFIX`).
+* **Delivery order** is derived from its sales order: `SO-19-10-2026-001-DO-01`, `-DO-02`, so a DO
+  always tells you which SO it belongs to.
+* **Challan** is generated on dispatch, dated with the dispatch day: `CH-19-10-2026-001`. The
+  warehouse field is now optional - type a value only when a physical challan already has a number;
+  otherwise the system numbers it.
+* Verified live in the container: order `SO-19-10-2026-001` -> DO `SO-19-10-2026-001-DO-01` ->
+  dispatch with the challan box left empty produced `CH-19-10-2026-001`. Suite 115/115.
