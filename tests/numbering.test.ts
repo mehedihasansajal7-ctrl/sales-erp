@@ -5,10 +5,10 @@ import prisma from "@/lib/prisma";
 import { standardContext, type Ctx } from "@/tests/helpers/flows";
 
 /**
- * Document numbering (2026-10-19):
- *   sales order   SO-19-10-2026-001   (date based, per-day counter)
- *   delivery order <SO>-DO-01         (derived from its sales order)
- *   challan       CH-19-10-2026-001   (date based, per-day counter)
+ * Document numbering:
+ *   sales order    SO19102026001   (date based, per-day counter, no separators)
+ *   delivery order DO19102026001   (own daily counter, starts with "DO")
+ *   challan        CH19102026001   (dated with the dispatch day)
  */
 describe("Document numbering", () => {
   let ctx: Ctx;
@@ -17,49 +17,51 @@ describe("Document numbering", () => {
     ctx = await standardContext();
   });
 
-  function dayStamp(date = new Date()): string {
+  /** 19 Oct 2026 -> "19102026". */
+  function dayDigits(date = new Date()): string {
     const [year, month, day] = toZonedDateString(date).split("-");
-    return `${day}-${month}-${year}`;
+    return `${day}${month}${year}`;
   }
 
   it("generates date-based sales order numbers with a per-day counter", async () => {
     const first = await nextOrderNo(prisma);
     const second = await nextOrderNo(prisma);
 
-    expect(first).toMatch(/^SO-\d{2}-\d{2}-\d{4}-\d{3}$/);
-    expect(first).toContain(dayStamp());
-    expect(second).toContain(dayStamp());
+    expect(first).toMatch(/^SO\d{11}$/);
+    expect(first).toContain(dayDigits());
+    expect(second).toContain(dayDigits());
 
-    const seqOf = (orderNo: string) => Number(orderNo.split("-").pop());
+    // No hyphens anywhere: the number is one readable token.
+    expect(first).not.toContain("-");
+
+    const seqOf = (orderNo: string) => Number(orderNo.slice(-3));
     expect(seqOf(second)).toBe(seqOf(first) + 1);
   });
 
-  it("derives the delivery order number from the sales order number", async () => {
-    const orderNo = await nextOrderNo(prisma);
-    const do1 = await nextDeliveryOrderNo(prisma, orderNo);
-    const do2 = await nextDeliveryOrderNo(prisma, orderNo);
+  it("numbers delivery orders with their own DO counter, not the sales order number", async () => {
+    const first = await nextDeliveryOrderNo(prisma);
+    const second = await nextDeliveryOrderNo(prisma);
 
-    expect(do1).toBe(`${orderNo}-DO-01`);
-    expect(do2).toBe(`${orderNo}-DO-02`);
-
-    // Another order starts again at 01.
-    const otherOrder = await nextOrderNo(prisma);
-    expect(await nextDeliveryOrderNo(prisma, otherOrder)).toBe(`${otherOrder}-DO-01`);
+    expect(first).toMatch(/^DO\d{11}$/);
+    expect(first).toContain(dayDigits());
+    expect(second).toContain(dayDigits());
+    expect(Number(second.slice(-3))).toBe(Number(first.slice(-3)) + 1);
+    expect(first.startsWith("SO")).toBe(false);
   });
 
   it("generates date-based challan numbers with a per-day counter", async () => {
     const first = await nextChallanNo(prisma);
     const second = await nextChallanNo(prisma);
 
-    expect(first).toMatch(/^CH-\d{2}-\d{2}-\d{4}-\d{3}$/);
-    expect(first).toContain(dayStamp());
+    expect(first).toMatch(/^CH\d{11}$/);
+    expect(first).toContain(dayDigits());
     expect(second).not.toBe(first);
   });
 
   it("uses the dispatch day for the challan number", async () => {
     const dispatchDay = new Date("2026-03-05T10:00:00+06:00");
     const challan = await nextChallanNo(prisma, dispatchDay);
-    expect(challan).toContain("05-03-2026");
+    expect(challan).toContain("05032026");
   });
 
   it("never returns the same number twice for parallel requests", async () => {
@@ -67,15 +69,14 @@ describe("Document numbering", () => {
     expect(new Set(numbers).size).toBe(8);
   });
 
-  it("does not clash with the counters used by orders already in the database", async () => {
-    // Creating a real order consumes the same sequence key (order:<day>).
+  it("does not clash with the counters used by real orders", async () => {
     const { createOrder } = await import("@/server/services/order.service");
     await prisma.customer.create({ data: { code: "CUS-NUM", name: "Numbering Trader" } });
     const order = await createOrder(
       { customerCode: "CUS-NUM", items: [{ productCode: "FERT-UREA", qtyMt: "1.000" }] },
       { id: ctx.sales.id, name: ctx.sales.name, role: "SALES" },
     );
-    expect(order.orderNo).toMatch(/^SO-\d{2}-\d{2}-\d{4}-\d{3}$/);
-    expect(order.orderNo).toContain(dayStamp());
+    expect(order.orderNo).toMatch(/^SO\d{11}$/);
+    expect(order.orderNo).toContain(dayDigits());
   });
 });

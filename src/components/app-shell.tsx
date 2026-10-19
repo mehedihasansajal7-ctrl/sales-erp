@@ -7,6 +7,7 @@ import * as Icons from "lucide-react";
 import type { NavSection } from "@/lib/nav";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { ChatBadge } from "@/components/chat/chat-badge";
 
 function Icon({ name, className }: { name: string; className?: string }) {
   const LucideIcon = (Icons as unknown as Record<string, React.ComponentType<{ className?: string }>>)[
@@ -55,11 +56,14 @@ export function AppShell({
           <Icons.Menu className="size-4" />
         </Button>
         <span className="text-sm font-semibold">Sales &amp; Delivery ERP</span>
-        <form action="/api/logout" method="post">
-          <Button variant="ghost" size="sm" type="submit">
-            Sign out
-          </Button>
-        </form>
+        <div className="flex items-center gap-2">
+          <ChatBadge />
+          <form action="/api/logout" method="post">
+            <Button variant="ghost" size="sm" type="submit">
+              Sign out
+            </Button>
+          </form>
+        </div>
       </header>
 
       <aside
@@ -113,6 +117,7 @@ export function AppShell({
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <ChatBadge />
             <Button asChild variant="outline" size="sm">
               <Link href="/change-password">Change password</Link>
             </Button>

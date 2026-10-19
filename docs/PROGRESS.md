@@ -156,3 +156,23 @@ Everything above was re-run after the last code change, on this machine, against
   otherwise the system numbers it.
 * Verified live in the container: order `SO-19-10-2026-001` -> DO `SO-19-10-2026-001-DO-01` ->
   dispatch with the challan box left empty produced `CH-19-10-2026-001`. Suite 115/115.
+
+## Numbering, chat and bulk add (2026-10-19, second pass)
+
+* **Number format simplified (owner request):** no separators inside the number.
+  `SO19102026001` (sales order), `DO19102026001` (delivery order - its own daily counter, no longer
+  derived from the SO number) and `CH19102026001` (challan, dated with the dispatch day). The old
+  hyphenated numbers (`SO-19-10-2026-001`) were replaced in the existing rows as well, and the
+  sequence keys were aligned so the next order continues correctly.
+* **Chat module** (`/chat`): three fixed rooms - Operation - Sales, Operation - Warehouse,
+  Announcement - and **no direct messages**. Room membership is a permission (`chat.sales`,
+  `chat.warehouse`, `chat.announce`), so a salesperson cannot read or post in the warehouse room even
+  by calling the API with a guessed room key. Messages are append-only (no PUT/DELETE endpoint), can
+  be tagged with an order / DO, support @mentions (only members of that room can be mentioned) and
+  every post writes a `CHAT_POST` audit row. Unread counts poll every 10s in the top bar, the open
+  room polls every 7s. 11 tests.
+* **Bulk add** for Products / Customers / Warehouses: paste from Excel (tab separated) or load a CSV,
+  optional header row with column-name matching, "Check rows" preview (ready / duplicate / error with
+  the reason), then "Import N row(s)". Existing codes and existing customer name+phone pairs are
+  never overwritten. Each imported row is created through the normal service, so it is audited and
+  customer codes stay system-generated. CSV template per entity.

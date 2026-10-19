@@ -4,6 +4,7 @@ import { stockSummary } from "@/server/services/stock.service";
 import { formatMt } from "@/lib/utils";
 import { DataTable, PageHeader, StatusBadge } from "@/components/page-header";
 import { DeactivateButton, WarehouseFormDialog } from "@/components/forms/admin-forms";
+import { BulkImportDialog } from "@/components/forms/bulk-import";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +25,12 @@ export default async function AdminWarehousesPage() {
         title="Warehouses / ship points"
         description="A warehouse user can only ever see and act on its own warehouse."
         breadcrumb={[{ href: "/dashboard", label: "Dashboard" }]}
-        actions={<WarehouseFormDialog />}
+        actions={
+          <div className="flex items-center gap-2">
+            <BulkImportDialog entity="warehouses" />
+            <WarehouseFormDialog />
+          </div>
+        }
       />
 
       <DataTable

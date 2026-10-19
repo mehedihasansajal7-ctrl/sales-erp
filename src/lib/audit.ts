@@ -32,7 +32,8 @@ export type AuditAction =
   | "TRANSFER_RECEIVE"
   | "COUNT_SUBMIT"
   | "COUNT_APPROVE"
-  | "COUNT_REJECT";
+  | "COUNT_REJECT"
+  | "CHAT_POST";
 
 export type AuditEntity =
   | "rate"
@@ -48,7 +49,8 @@ export type AuditEntity =
   | "customer"
   | "warehouse"
   | "system_setting"
-  | "auth";
+  | "auth"
+  | "chat_message";
 
 export type AuditInput = {
   userId?: string | null;

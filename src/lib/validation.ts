@@ -505,6 +505,22 @@ export const countDecisionSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// Chat (fixed rooms, append only)
+// ---------------------------------------------------------------------------
+
+export const chatRoomSchema = z.enum(["OPERATION_SALES", "OPERATION_WAREHOUSE", "ANNOUNCEMENT"]);
+
+export const chatPostSchema = z.object({
+  room: chatRoomSchema,
+  body: trimmedString(1, 2000),
+  orderId: nonEmptyId.optional(),
+  deliveryOrderId: nonEmptyId.optional(),
+  mentionedUserIds: z.array(nonEmptyId).max(20).optional(),
+});
+
+export type ChatPostInput = z.infer<typeof chatPostSchema>;
+
+// ---------------------------------------------------------------------------
 // List / report query parameters
 // ---------------------------------------------------------------------------
 

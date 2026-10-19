@@ -80,6 +80,17 @@ enum MovementType {
   UNRESERVE
 }
 
+/**
+ * Fixed chat rooms. There is deliberately no free-form room and no direct message:
+ * a salesperson can only reach Operations, and a warehouse user can only reach
+ * Operations, which keeps Sales and Warehouse from bypassing Operations.
+ */
+enum ChatRoom {
+  OPERATION_SALES
+  OPERATION_WAREHOUSE
+  ANNOUNCEMENT
+}
+
 // ----------------------------------------------------------------------------
 // Master data
 // ----------------------------------------------------------------------------
@@ -114,6 +125,8 @@ model User {
   stockCountsApproved StockCount[]     @relation("StockCountApprovedBy")
   auditLogs        AuditLog[]
   sessions         Session[]
+  chatMessages     ChatMessage[]       @relation("ChatAuthor")
+  chatReadStates   ChatReadState[]     @relation("ChatReads")
 
   @@index([role, isActive])
   @@index([warehouseId])
@@ -267,6 +280,7 @@ model Order {
   approver   User?           @relation("OrderApprovedBy", fields: [approvedBy], references: [id])
   items      OrderItem[]
   deliveryOrders DeliveryOrder[]
+  chatMessages ChatMessage[]  @relation("ChatOrder")
 
   // Queue query: orders of one customer, in priority order.
   @@unique([customerId, orderSeq])
@@ -335,6 +349,7 @@ model DeliveryOrder {
   creator   User?               @relation("DoCreatedBy", fields: [createdBy], references: [id])
   items     DeliveryOrderItem[]
   dispatches Dispatch[]
+  chatMessages ChatMessage[]  @relation("ChatDo")
 
   @@index([orderId])
   @@index([warehouseId, status])
@@ -563,11 +578,50 @@ model SystemSetting {
   @@map("system_settings")
 }
 
-/// Monotonic counters for document numbering (ORD-2026-000123, DO-..., etc.).
+/// Monotonic counters for document numbering (SO19102026001, DO..., etc.).
 model Sequence {
   key       String   @id
   value     Int      @default(0)
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("sequences")
+}
+
+// ----------------------------------------------------------------------------
+// Chat - fixed, role-scoped rooms (append only, no direct messages)
+// ----------------------------------------------------------------------------
+
+model ChatMessage {
+  id     String   @id @default(cuid())
+  room   ChatRoom
+  body   String
+  /// Optional context: a message can point at the order / delivery order it is about.
+  orderId         String? @map("order_id")
+  deliveryOrderId String? @map("delivery_order_id")
+  /// Users @mentioned in this message; only people who can see the room are accepted.
+  mentionedUserIds String[] @map("mentioned_user_ids")
+
+  authorId  String   @map("author_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  author        User          @relation("ChatAuthor", fields: [authorId], references: [id])
+  order         Order?        @relation("ChatOrder", fields: [orderId], references: [id], onDelete: SetNull)
+  deliveryOrder DeliveryOrder? @relation("ChatDo", fields: [deliveryOrderId], references: [id], onDelete: SetNull)
+
+  @@index([room, createdAt])
+  @@index([orderId])
+  @@index([deliveryOrderId])
+  @@map("chat_messages")
+}
+
+/// How far each user has read a room - drives the unread badge in the top bar.
+model ChatReadState {
+  userId     String   @map("user_id")
+  room       ChatRoom
+  lastReadAt DateTime @default(now()) @map("last_read_at")
+
+  user User @relation("ChatReads", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, room])
+  @@map("chat_read_states")
 }

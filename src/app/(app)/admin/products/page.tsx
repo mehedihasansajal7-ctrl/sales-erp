@@ -4,6 +4,7 @@ import { listProducts } from "@/server/services/master-data.service";
 import { formatBdt } from "@/lib/utils";
 import { DataTable, PageHeader, StatusBadge } from "@/components/page-header";
 import { DeactivateButton, ProductFormDialog } from "@/components/forms/admin-forms";
+import { BulkImportDialog } from "@/components/forms/bulk-import";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +20,12 @@ export default async function AdminProductsPage() {
         title="Products"
         description="Bulk commodities traded in MT. Products are deactivated, never deleted, so history stays readable."
         breadcrumb={[{ href: "/dashboard", label: "Dashboard" }]}
-        actions={<ProductFormDialog />}
+        actions={
+          <div className="flex items-center gap-2">
+            <BulkImportDialog entity="products" />
+            <ProductFormDialog />
+          </div>
+        }
       />
 
       <DataTable

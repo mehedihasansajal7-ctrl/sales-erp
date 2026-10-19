@@ -53,6 +53,16 @@ export const PERMISSIONS = {
   "report.view": ["FINANCE", "SALES", "SALES_OPS", "WAREHOUSE", "MANAGEMENT", "ADMIN"],
   "dashboard.view": ["FINANCE", "SALES", "SALES_OPS", "WAREHOUSE", "MANAGEMENT", "ADMIN"],
 
+  // --- Chat (fixed rooms, no direct messages) -------------------------------
+  /// Announcement room is readable by everyone.
+  "chat.view": ["FINANCE", "SALES", "SALES_OPS", "WAREHOUSE", "MANAGEMENT", "ADMIN"],
+  /// Operation - Sales: the salesperson and Sales Operations. The warehouse never sees it.
+  "chat.sales": ["SALES", "SALES_OPS", "ADMIN"],
+  /// Operation - Warehouse: the warehouse and Sales Operations. Sales never sees it.
+  "chat.warehouse": ["WAREHOUSE", "SALES_OPS", "ADMIN"],
+  /// Only Sales Operations / Admin may post in the announcement room.
+  "chat.announce": ["SALES_OPS", "ADMIN"],
+
   // --- Admin ---------------------------------------------------------------
   "admin.users": ["ADMIN"],
   "admin.products": ["ADMIN"],

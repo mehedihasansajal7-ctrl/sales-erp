@@ -92,7 +92,7 @@ describe("Rule 3 — per-customer delivery priority", () => {
     const do3 = await createDo(ctx, order3.id, "WH-DHK", [
       { orderItemId: items3[0]!.id, qtyMt: "30.000" },
     ]);
-    expect(do3.deliveryOrder.doNo).toMatch(/^SO-\d{2}-\d{2}-\d{4}-\d{3}-DO-\d{2}$/);
+    expect(do3.deliveryOrder.doNo).toMatch(/^DO\d{11}$/);
   });
 
   it("blocks a newer Coal order behind an older unfinished Fertilizer order of the same customer", async () => {

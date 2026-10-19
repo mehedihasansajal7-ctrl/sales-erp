@@ -164,7 +164,7 @@ export async function createDeliveryOrder(input: CreateDoInput, user: ServiceAct
 
     // 4. Create the DO header and lines, then reserve the stock against the DO
     //    itself so every ledger row is traceable to a delivery order.
-    const doNo = await nextDeliveryOrderNo(tx, order.orderNo);
+    const doNo = await nextDeliveryOrderNo(tx);
 
     const created = await tx.deliveryOrder.create({
       data: {

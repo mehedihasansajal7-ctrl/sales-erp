@@ -26,7 +26,7 @@ request ─▶ src/app/**            screens (server components) & route handler
   transaction that changes the DO/dispatch, with `CHECK (… <= qty_mt)` behind them.
 * `stock_balances` is the derived balance table (`on_hand_mt`, `reserved_mt`) and `stock_ledger` is
   the immutable movement log (`balance_after`, `reserved_after` on every row).
-* `sequences` provides atomic, gap-free document numbers (`ORD-2026-000123`).
+* `sequences` provides atomic, gap-free document numbers (`SO19102026001`).
 * `audit_logs` carries who/what/before/after/IP for every action; triggers reject UPDATE/DELETE/TRUNCATE.
 
 ## 3. Concurrency strategy (the heart of the system)

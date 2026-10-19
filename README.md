@@ -131,9 +131,9 @@ SQL.
 
 | Document | Format | Example |
 |---|---|---|
-| Sales order (SO) | `SO-DD-MM-YYYY-NNN` (per-day counter) | `SO-19-10-2026-001` |
-| Delivery order (DO) | `<SO>-DO-NN` (derived from its sales order) | `SO-19-10-2026-001-DO-02` |
-| Challan | `CH-DD-MM-YYYY-NNN` (per-day counter, auto on dispatch) | `CH-19-10-2026-004` |
+| Sales order (SO) | `SO` + `DDMMYYYY` + 3-digit daily counter | `SO19102026001` |
+| Delivery order (DO) | `DO` + `DDMMYYYY` + 3-digit daily counter | `DO19102026002` |
+| Challan | `CH` + `DDMMYYYY` + 3-digit daily counter (auto on dispatch) | `CH19102026004` |
 | Customer code | `CUS-NNNNNN` (never editable) | `CUS-000001` |
 | Transfer / stock count | `TRF-YYYY-NNNNNN` / `PC-YYYY-NNNNNN` | `TRF-2026-000007` |
 
@@ -155,6 +155,8 @@ The date part always comes from **Asia/Dhaka**.
 | Warehouse | My DOs, dispatch entry, dispatch register, stock & inward, opening stock, transfers, physical counts |
 | Reports | 12 reports, each with filters and **Excel / PDF / CSV** export |
 | Admin | Users & roles, products, customers, warehouses, settings, audit log viewer |
+| Admin (bulk) | Bulk add for products / customers / warehouses - paste from Excel or load a CSV, check the rows, then import |
+| Communication | Chat: 3 fixed rooms (Operation - Sales, Operation - Warehouse, Announcement), unread badge, order/DO tags, @mentions |
 | Printables | Order confirmation, DO copy, dispatch challan (screen print + server-rendered PDF) |
 
 Every list has search, filters, sorting and pagination. The UI is responsive and works on phones;

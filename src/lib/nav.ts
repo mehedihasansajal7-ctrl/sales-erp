@@ -65,6 +65,10 @@ export const NAV: NavSection[] = [
     items: [{ href: "/reports", label: "All reports", icon: "BarChart3", roles: REPORT_ROLES }],
   },
   {
+    title: "Communication",
+    items: [{ href: "/chat", label: "Chat", icon: "MessageSquare", roles: ALL }],
+  },
+  {
     title: "Administration",
     items: [
       { href: "/admin/users", label: "Users & roles", icon: "Users", roles: ["ADMIN"] },

@@ -4,6 +4,7 @@ import { formatBdt } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable, FilterBar, PageHeader, StatusBadge } from "@/components/page-header";
 import { CustomerFormDialog, DeactivateButton } from "@/components/forms/admin-forms";
+import { BulkImportDialog } from "@/components/forms/bulk-import";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +27,12 @@ export default async function AdminCustomersPage({
         title="Customers"
         description="Credit limit is used by the approval check: exceeding it requires a written Sales Ops override."
         breadcrumb={[{ href: "/dashboard", label: "Dashboard" }]}
-        actions={<CustomerFormDialog />}
+        actions={
+          <div className="flex items-center gap-2">
+            <BulkImportDialog entity="customers" />
+            <CustomerFormDialog />
+          </div>
+        }
       />
 
       <FilterBar

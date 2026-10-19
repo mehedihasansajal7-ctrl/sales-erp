@@ -29,7 +29,7 @@ describe("Rule 1 — rate lock", () => {
     expect(firstItems[0]?.lockedRatePerMt.toFixed(2)).toBe("50000.00");
     expect(firstItems[0]?.lineValue.toFixed(2)).toBe("5000000.00");
     expect(first.totalValue).toBe("5000000.00");
-    expect(first.orderNo).toMatch(/^SO-\d{2}-\d{2}-\d{4}-\d{3}$/);
+    expect(first.orderNo).toMatch(/^SO\d{11}$/);
 
     // Finance publishes a lower rate.
     await publishRate("FERT-UREA", "49000.00", ctx.finance.id);

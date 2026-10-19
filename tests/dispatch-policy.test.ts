@@ -225,7 +225,7 @@ describe("Who may change the dispatched quantity", () => {
       { id: ctx.warehouse.id, name: ctx.warehouse.name, role: "WAREHOUSE", warehouseCode: "WH-DHK" },
     );
 
-    expect(result.dispatch.challanNo).toMatch(/^CH-\d{2}-\d{2}-\d{4}-\d{3}$/);
+    expect(result.dispatch.challanNo).toMatch(/^CH\d{11}$/);
     const stored = await prisma.dispatch.findUniqueOrThrow({
       where: { challanNo: result.dispatch.challanNo },
     });
