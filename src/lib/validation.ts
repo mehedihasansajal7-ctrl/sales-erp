@@ -418,6 +418,7 @@ export const stockOpeningSchema = z.object({
     .max(300)
     .optional()
     .or(z.literal("").transform(() => undefined)),
+  movementDate: zonedDateTimeSchema.optional(),
 });
 
 export const stockInwardSchema = z.object({

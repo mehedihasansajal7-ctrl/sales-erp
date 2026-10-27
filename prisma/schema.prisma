@@ -460,6 +460,10 @@ model StockLedger {
   reservedAfter Decimal    @default(0) @db.Decimal(18, 3) @map("reserved_after")
   note        String?
 
+  /// The day the stock actually moved (may be back-dated by the warehouse), as
+  /// opposed to `createdAt`, which is when the row was typed into the system.
+  movementDate DateTime   @default(now()) @map("movement_date")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
   createdBy String?  @map("created_by")
@@ -468,7 +472,7 @@ model StockLedger {
   product   Product   @relation(fields: [productCode], references: [code])
   creator   User?     @relation("LedgerCreatedBy", fields: [createdBy], references: [id])
 
-  @@index([warehouseId, productCode, createdAt(sort: Desc)])
+  @@index([warehouseId, productCode, movementDate(sort: Desc)])
   @@index([movementType])
   @@index([refType, refId])
   /// Global "latest movements first" ordering used by the stock-ledger screen.

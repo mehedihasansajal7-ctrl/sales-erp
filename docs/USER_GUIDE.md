@@ -192,14 +192,22 @@ Operations — only they can grant a priority override.
 
 ### 4.2 Stock — **Warehouse → Stock & inward**
 
-* **Inward receipt** — quantity received with an optional reference (LC/challan). Writes an `INWARD`
+* **Inward receipt** - quantity received with an optional reference (LC/challan) **and the entry
+  date**. The entry date is the day the goods actually arrived: it defaults to today, past days are
+  allowed (stock is often typed in the next morning) and a future date is refused. Writes an `INWARD`
   ledger row and increases on-hand stock.
-* **Opening stock** — once per warehouse/product, for the initial load.
+* **Opening stock** - once per warehouse/product, for the initial load, with its own opening date.
+* **Bulk entry** (top right) - paste several products from Excel (tab separated) or load a CSV:
+  choose *Inward receipt* or *Opening stock*, the warehouse, one entry date for the batch, then
+  **Check rows** (ready / skipped / error with the reason) and **Import**. A CSV template is one click
+  away. Opening balances are refused for a product that already has movements; a product repeated in
+  the same list is reported once instead of being added twice.
 * The balances table shows opening, inward, outward, transfer in/out, adjustment, closing, reserved
   and **available** per product.
 
-**Stock ledger** lists every movement with the balance after it, the reference and who did it.
-Nothing in the ledger is ever edited or deleted.
+**Stock ledger** lists every movement with the **movement date** (the day it happened), the day it
+was recorded, the balance after it, the reference and who did it. Nothing in the ledger is ever
+edited or deleted.
 
 ### 4.3 Transfers and counts
 

@@ -8,6 +8,7 @@ import {
   stockAdjustmentSchema,
   stockInwardSchema,
   stockOpeningSchema,
+  positiveQtySchema,
   transferCreateSchema,
   transferDecisionSchema,
 } from "@/lib/validation";
@@ -20,6 +21,16 @@ import {
 } from "@/server/services/transfer.service";
 import { createStockCount, decideStockCount } from "@/server/services/stock-count.service";
 import { actionFailure, actionOk, bool, str, type ActionState } from "@/actions/helpers";
+import { toZonedDateString, zonedToUtc } from "@/lib/dates";
+import { errors } from "@/lib/errors";
+import { movementDateFromInput } from "@/lib/movement-date";
+import {
+  STOCK_BULK_MAX_ROWS,
+  parseStockBulkInput,
+  type StockBulkMode,
+  type StockBulkReport,
+  type StockBulkRowReport,
+} from "@/lib/stock-bulk";
 
 function revalidateStock() {
   revalidatePath("/warehouse/stock");
@@ -29,7 +40,15 @@ function revalidateStock() {
   revalidatePath("/dashboard");
 }
 
-/** Rule 7 — opening stock (once per warehouse + product). */
+/**
+ * The day the stock actually moved. Back-dating is allowed (stock is often typed
+ * in the next morning), a future date is not.
+ */
+function movementDateFrom(formData: FormData): Date {
+  return movementDateFromInput(str(formData, "movementDate"));
+}
+
+/** Rule 7 - opening stock (once per warehouse + product). */
 export async function openingStockAction(
   _prev: ActionState,
   formData: FormData,
@@ -41,6 +60,7 @@ export async function openingStockAction(
       productCode: str(formData, "productCode"),
       qtyMt: str(formData, "qtyMt"),
       note: str(formData, "note"),
+      movementDate: str(formData, "movementDate") || undefined,
     });
 
     const prisma = (await import("@/lib/prisma")).default;
@@ -50,6 +70,7 @@ export async function openingStockAction(
         productCode: input.productCode,
         qtyMt: input.qtyMt,
         note: input.note ?? "Opening stock",
+        movementDate: movementDateFrom(formData),
         refType: "opening",
         userId: user.id,
         userName: user.name,
@@ -78,6 +99,7 @@ export async function inwardStockAction(
       qtyMt: str(formData, "qtyMt"),
       reference: str(formData, "reference"),
       note: str(formData, "note"),
+      movementDate: str(formData, "movementDate") || undefined,
     });
 
     const prisma = (await import("@/lib/prisma")).default;
@@ -86,7 +108,8 @@ export async function inwardStockAction(
         warehouseCode: input.warehouseCode,
         productCode: input.productCode,
         qtyMt: input.qtyMt,
-        note: [input.reference, input.note].filter(Boolean).join(" — ") || "Inward receipt",
+        note: [input.reference, input.note].filter(Boolean).join(" - ") || "Inward receipt",
+        movementDate: movementDateFrom(formData),
         refType: "inward",
         refId: input.reference ?? null,
         userId: user.id,
@@ -301,3 +324,198 @@ export async function decideStockCountAction(
 }
 
 
+
+// ---------------------------------------------------------------------------
+// Bulk stock entry (opening balances or a multi-product inward receipt)
+// ---------------------------------------------------------------------------
+
+export type StockBulkState = ActionState & { report?: StockBulkReport };
+
+/**
+ * Bulk stock entry, two-step like every bulk screen: `commit=false` validates and
+ * reports, `commit=true` writes the rows that passed.
+ *
+ * Opening balances are refused when the warehouse/product already has movements
+ * (the one-time rule), and a product repeated in the same list is reported instead
+ * of being added twice.
+ */
+export async function bulkStockEntryAction(
+  _prev: StockBulkState,
+  formData: FormData,
+): Promise<StockBulkState> {
+  try {
+    const mode: StockBulkMode = str(formData, "mode") === "opening" ? "opening" : "inward";
+    const user = await requirePermission(mode === "opening" ? "stock.opening" : "stock.inward");
+
+    // A warehouse user can only ever post into its own warehouse.
+    const requested = str(formData, "warehouseCode");
+    const warehouseCode = user.role === "WAREHOUSE" ? (user.warehouseId ?? "") : requested;
+    if (!warehouseCode) throw errors.validation("Choose a warehouse.");
+    if (user.role === "WAREHOUSE" && requested && requested !== user.warehouseId) {
+      throw errors.forbidden("stock entry for another warehouse");
+    }
+
+    const movementDate = movementDateFrom(formData);
+    const commit = bool(formData, "commit");
+    const raw = typeof formData.get("text") === "string" ? String(formData.get("text")) : "";
+    const parsed = parseStockBulkInput(mode, raw);
+
+    if (parsed.rows.length === 0) {
+      return { ok: false, message: "Nothing to import - paste some rows first." };
+    }
+    if (parsed.rows.length > STOCK_BULK_MAX_ROWS) {
+      return {
+        ok: false,
+        message: `Too many rows (${parsed.rows.length}). Import at most ${STOCK_BULK_MAX_ROWS} rows at a time.`,
+      };
+    }
+
+    const prisma = (await import("@/lib/prisma")).default;
+    const products = await prisma.product.findMany({
+      where: { isActive: true },
+      select: { code: true },
+    });
+    const productCodes = new Set(products.map((product) => product.code));
+
+    const withMovements =
+      mode === "opening"
+        ? new Set(
+            (
+              await prisma.stockLedger.findMany({
+                where: { warehouseId: warehouseCode },
+                select: { productCode: true },
+                distinct: ["productCode"],
+              })
+            ).map((row) => row.productCode),
+          )
+        : new Set<string>();
+
+    const rows: StockBulkRowReport[] = [];
+    const seen = new Set<string>();
+    let imported = 0;
+    let okCount = 0;
+    let invalid = 0;
+    let duplicates = 0;
+
+    for (const row of parsed.rows) {
+      const label = row.productCode || `(line ${row.line})`;
+
+      if (!row.productCode) {
+        invalid += 1;
+        rows.push({ line: row.line, label, status: "invalid", message: "Product code is required." });
+        continue;
+      }
+      if (!productCodes.has(row.productCode)) {
+        invalid += 1;
+        rows.push({
+          line: row.line,
+          label,
+          status: "invalid",
+          message: `Unknown or inactive product code ${row.productCode}.`,
+        });
+        continue;
+      }
+
+      const qty = positiveQtySchema.safeParse(row.qtyMt);
+      if (!qty.success) {
+        invalid += 1;
+        rows.push({
+          line: row.line,
+          label,
+          status: "invalid",
+          message: qty.error.issues[0]?.message ?? "Invalid quantity.",
+        });
+        continue;
+      }
+
+      if (seen.has(row.productCode)) {
+        duplicates += 1;
+        rows.push({
+          line: row.line,
+          label,
+          status: "duplicate",
+          message: `${row.productCode} is repeated in this list.`,
+        });
+        continue;
+      }
+      seen.add(row.productCode);
+
+      if (withMovements.has(row.productCode)) {
+        duplicates += 1;
+        rows.push({
+          line: row.line,
+          label,
+          status: "duplicate",
+          message: `${row.productCode} already has stock movements at this warehouse - use an inward entry instead.`,
+        });
+        continue;
+      }
+
+      if (commit) {
+        const ip = await getClientIp();
+        await prisma.$transaction(async (tx) => {
+          if (mode === "opening") {
+            await openingStock(tx, {
+              warehouseCode,
+              productCode: row.productCode,
+              qtyMt: qty.data,
+              note: row.note || "Opening stock (bulk)",
+              movementDate,
+              refType: "opening",
+              userId: user.id,
+              userName: user.name,
+              ip,
+              auditAction: "CREATE",
+            });
+          } else {
+            await inwardStock(tx, {
+              warehouseCode,
+              productCode: row.productCode,
+              qtyMt: qty.data,
+              note: [row.reference, row.note].filter(Boolean).join(" - ") || "Inward receipt (bulk)",
+              movementDate,
+              refType: "inward",
+              refId: row.reference || null,
+              userId: user.id,
+              userName: user.name,
+              ip,
+              auditAction: "CREATE",
+            });
+          }
+        });
+        imported += 1;
+      }
+
+      okCount += 1;
+      rows.push({ line: row.line, label, status: "ok" });
+    }
+
+    if (commit) revalidateStock();
+
+    const report: StockBulkReport = {
+      mode,
+      committed: commit,
+      imported,
+      ok: okCount,
+      invalid,
+      duplicates,
+      rows,
+      ignoredColumns: parsed.ignoredColumns,
+      usedHeader: parsed.usedHeader,
+    };
+
+    const parts = [`${okCount} product${okCount === 1 ? "" : "s"} ready`];
+    if (invalid > 0) parts.push(`${invalid} with errors`);
+    if (duplicates > 0) parts.push(`${duplicates} skipped`);
+
+    return {
+      ok: invalid === 0 && duplicates === 0,
+      message: commit
+        ? `${imported} product stock line${imported === 1 ? "" : "s"} recorded (${parts.join(", ")}).`
+        : `Check complete - ${parts.join(", ")}. Nothing was saved yet.`,
+      report,
+    };
+  } catch (error) {
+    return actionFailure(error);
+  }
+}

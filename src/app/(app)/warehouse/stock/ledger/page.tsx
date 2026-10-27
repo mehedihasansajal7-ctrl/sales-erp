@@ -1,5 +1,5 @@
 import { requireUser } from "@/lib/auth";
-import { zonedToUtc, formatDateTime } from "@/lib/dates";
+import { zonedToUtc, formatDateTime, toZonedDateString } from "@/lib/dates";
 import prisma from "@/lib/prisma";
 import { listProducts, listWarehouses } from "@/server/services/master-data.service";
 import { formatMt, formatNumber } from "@/lib/utils";
@@ -30,7 +30,7 @@ export default async function StockLedgerPage({
     ...(get("movementType") ? { movementType: get("movementType") as never } : {}),
     ...(get("from") || get("to")
       ? {
-          createdAt: {
+          movementDate: {
             ...(get("from") ? { gte: zonedToUtc(get("from") as string) } : {}),
             ...(get("to") ? { lte: zonedToUtc(`${get("to")}T23:59:59`) } : {}),
           },
@@ -41,7 +41,7 @@ export default async function StockLedgerPage({
   const [rows, total, warehouses, products] = await Promise.all([
     prisma.stockLedger.findMany({
       where,
-      orderBy: { createdAt: "desc" },
+      orderBy: [{ movementDate: "desc" }, { createdAt: "desc" }],
       skip: (page - 1) * pageSize,
       take: pageSize,
       include: { warehouse: true, product: true, creator: { select: { name: true } } },
@@ -123,7 +123,12 @@ export default async function StockLedgerPage({
 
       <DataTable
         columns={[
-          { key: "when", label: "When", render: (row) => formatDateTime(row.createdAt) },
+          {
+            key: "movementDate",
+            label: "Movement date",
+            render: (row) => toZonedDateString(row.movementDate),
+          },
+          { key: "when", label: "Recorded", render: (row) => formatDateTime(row.createdAt) },
           { key: "warehouse", label: "Warehouse", render: (row) => row.warehouse.name },
           { key: "product", label: "Product", render: (row) => row.product.name },
           {

@@ -4,10 +4,12 @@ import { roleHasPermission } from "@/lib/rbac";
 import { stockSummary } from "@/server/services/stock.service";
 import { listProducts, listWarehouses } from "@/server/services/master-data.service";
 import { formatMt } from "@/lib/utils";
+import { toZonedDateString } from "@/lib/dates";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable, PageHeader } from "@/components/page-header";
 import { StockEntryPanel } from "@/components/forms/warehouse-forms";
+import { BulkStockDialog } from "@/components/forms/stock-bulk-import";
 
 export const dynamic = "force-dynamic";
 
@@ -32,9 +34,21 @@ export default async function StockPage() {
         description="Per warehouse and product: opening, inward, outward, transfers, closing, reserved and available."
         breadcrumb={[{ href: "/dashboard", label: "Dashboard" }]}
         actions={
-          <Button asChild variant="outline" size="sm">
-            <Link href="/warehouse/stock/ledger">Stock ledger</Link>
-          </Button>
+          <div className="flex items-center gap-2">
+            {canEntry ? (
+              <BulkStockDialog
+                warehouses={warehouses.map((warehouse) => ({
+                  code: warehouse.code,
+                  name: warehouse.name,
+                }))}
+                lockedWarehouseCode={lockedWarehouseCode}
+                today={toZonedDateString(new Date())}
+              />
+            ) : null}
+            <Button asChild variant="outline" size="sm">
+              <Link href="/warehouse/stock/ledger">Stock ledger</Link>
+            </Button>
+          </div>
         }
       />
 
@@ -109,6 +123,7 @@ export default async function StockPage() {
                   availableMt: row.availableMt,
                 }))}
                 lockedWarehouseCode={canAdjust ? null : lockedWarehouseCode}
+                today={toZonedDateString(new Date())}
               />
             </CardContent>
           </Card>

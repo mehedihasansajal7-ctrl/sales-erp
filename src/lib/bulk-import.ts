@@ -145,26 +145,19 @@ function normaliseHeader(value: string): string {
   return value.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
-export type ParsedBulkRow = {
-  /** 1-based line number in the pasted text (header counts as line 1). */
-  line: number;
-  values: Record<string, string>;
-  preview: string;
-};
+export type ParsedTableRow = { line: number; values: Record<string, string> };
 
-export type ParseResult = {
-  rows: ParsedBulkRow[];
-  /** Columns that were not recognised, if a header row was used. */
-  ignoredColumns: string[];
-  /** True when the first line was treated as a column header. */
-  usedHeader: boolean;
-};
-
-export function parseBulkInput(entity: BulkEntity, text: string): ParseResult {
+/**
+ * Generic table reader used by every bulk screen: detects the delimiter, an optional
+ * header row (matched by column name) and returns one `values` object per line.
+ */
+export function parseTable(
+  text: string,
+  fields: { key: string; label: string; aliases: string[] }[],
+): { rows: ParsedTableRow[]; ignoredColumns: string[]; usedHeader: boolean } {
   const table = parseDelimited(text);
   if (table.length === 0) return { rows: [], ignoredColumns: [], usedHeader: false };
 
-  const fields = BULK_ENTITIES[entity].fields;
   const aliasToKey = new Map<string, string>();
   for (const field of fields) {
     aliasToKey.set(normaliseHeader(field.key), field.key);
@@ -191,17 +184,40 @@ export function parseBulkInput(entity: BulkEntity, text: string): ParseResult {
       if (!key) return;
       values[key] = (cells[columnIndex] ?? "").trim();
     });
-
-    // Keep only known keys (a header may map two columns to the same field).
-    const preview =
-      entity === "customers"
-        ? values.name ?? ""
-        : `${values.code ?? ""} ${values.name ?? ""}`.trim();
-
-    return { line: index + (usedHeader ? 2 : 1), values, preview };
+    return { line: index + (usedHeader ? 2 : 1), values };
   });
 
   return { rows, ignoredColumns, usedHeader };
+}
+
+export type ParsedBulkRow = {
+  /** 1-based line number in the pasted text (header counts as line 1). */
+  line: number;
+  values: Record<string, string>;
+  preview: string;
+};
+
+export type ParseResult = {
+  rows: ParsedBulkRow[];
+  /** Columns that were not recognised, if a header row was used. */
+  ignoredColumns: string[];
+  /** True when the first line was treated as a column header. */
+  usedHeader: boolean;
+};
+
+export function parseBulkInput(entity: BulkEntity, text: string): ParseResult {
+  const fields = BULK_ENTITIES[entity].fields;
+  const table = parseTable(text, fields);
+
+  const rows = table.rows.map((row) => ({
+    ...row,
+    preview:
+      entity === "customers"
+        ? row.values.name ?? ""
+        : `${row.values.code ?? ""} ${row.values.name ?? ""}`.trim(),
+  }));
+
+  return { rows, ignoredColumns: table.ignoredColumns, usedHeader: table.usedHeader };
 }
 
 export function templateCsv(entity: BulkEntity): string {

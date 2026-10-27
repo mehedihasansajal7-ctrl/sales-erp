@@ -90,6 +90,8 @@ export type MovementInput = {
   userId?: string | null;
   userName?: string | null;
   ip?: string | null;
+  /** The day the stock moved (back-dating allowed). Defaults to now. */
+  movementDate?: Date;
   /** Skip the audit row (used when the caller writes a richer audit entry). */
   skipAudit?: boolean;
   auditAction?: AuditAction;
@@ -142,6 +144,7 @@ export async function applyMovement(tx: Tx, input: MovementInput) {
       balanceAfter: newOnHand.toFixed(3),
       reservedAfter: newReserved.toFixed(3),
       note: input.note ?? null,
+      movementDate: input.movementDate ?? new Date(),
       createdBy: input.userId ?? null,
     },
   });

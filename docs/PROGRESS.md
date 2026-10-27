@@ -176,3 +176,18 @@ Everything above was re-run after the last code change, on this machine, against
   the reason), then "Import N row(s)". Existing codes and existing customer name+phone pairs are
   never overwritten. Each imported row is created through the normal service, so it is audited and
   customer codes stay system-generated. CSV template per entity.
+
+## Stock entry date + bulk stock entry (2026-10-27)
+
+* **Entry date on stock movements.** `stock_ledger` gained `movement_date` (the day the stock actually
+  moved) next to `created_at` (the day it was typed). The Inward and Opening forms have a date field:
+  today by default, past days allowed (goods often arrive the evening before or are typed in the next
+  morning), future dates refused. The ledger and the stock-ledger report filter and sort by
+  **movement date** and still show the recorded time.
+* **Bulk stock entry** on `/warehouse/stock`: paste from Excel / load a CSV, choose *Inward receipt* or
+  *Opening stock*, the warehouse and one entry date for the batch, then check-then-import. Unknown or
+  inactive product codes and repeats in the list are reported; an opening balance is refused for a
+  product that already has movements. CSV template per mode. Same audited service path as the single
+  entry forms, so every row lands in the ledger and the audit trail.
+* Tests: `tests/stock-entry.test.ts` (movement date persisted and distinct from `created_at`, future
+  date rejected, opening-once rule, bulk parser with/without header, column mapping). Suite 132/132.

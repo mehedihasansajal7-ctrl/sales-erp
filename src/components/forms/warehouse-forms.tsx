@@ -25,11 +25,14 @@ export function StockEntryPanel({
   products,
   balances,
   lockedWarehouseCode,
+  today,
 }: {
   warehouses: Option[];
   products: Option[];
   balances: { warehouseCode: string; productCode: string; onHandMt: string; reservedMt: string; availableMt: string }[];
   lockedWarehouseCode: string | null;
+  /** Today in APP_TIMEZONE (YYYY-MM-DD) - the default and the maximum entry date. */
+  today: string;
 }) {
   const opening = useActionForm(openingStockAction);
   const inward = useActionForm(inwardStockAction);
@@ -102,6 +105,22 @@ export function StockEntryPanel({
               <Field label="Reference (challan / LC)" htmlFor="inward-ref">
                 <Input id="inward-ref" name="reference" placeholder="LC-2026-0045" />
               </Field>
+              <Field
+                label="Entry date"
+                htmlFor="inward-date"
+                required
+                hint="The day the goods actually arrived. Past dates are allowed, future dates are not."
+              >
+                <Input
+                  id="inward-date"
+                  name="movementDate"
+                  type="date"
+                  defaultValue={today}
+                  max={today}
+                  required
+                />
+                <FieldError state={inward.state} name="movementDate" />
+              </Field>
               <Field label="Note (optional)" htmlFor="inward-note" className="sm:col-span-2">
                 <Textarea id="inward-note" name="note" rows={2} />
               </Field>
@@ -134,6 +153,22 @@ export function StockEntryPanel({
               <Field label="Opening quantity (MT)" htmlFor="opening-qty" required>
                 <Input id="opening-qty" name="qtyMt" inputMode="decimal" placeholder="0.000" required />
                 <FieldError state={opening.state} name="qtyMt" />
+              </Field>
+              <Field
+                label="Opening date"
+                htmlFor="opening-date"
+                required
+                hint="The date this opening balance belongs to (usually the go-live date)."
+              >
+                <Input
+                  id="opening-date"
+                  name="movementDate"
+                  type="date"
+                  defaultValue={today}
+                  max={today}
+                  required
+                />
+                <FieldError state={opening.state} name="movementDate" />
               </Field>
               <Field label="Note (optional)" htmlFor="opening-note">
                 <Input id="opening-note" name="note" placeholder="Opening as at 01 Oct 2026" />

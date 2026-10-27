@@ -684,7 +684,7 @@ const stockLedgerReport: ReportDefinition = {
   title: "Warehouse stock ledger",
   description: "Every stock movement with the balance after the movement.",
   columns: [
-    { key: "createdAt", label: "When", kind: "datetime" },
+    { key: "createdAt", label: "Movement date", kind: "date" },
     { key: "warehouseName", label: "Warehouse" },
     { key: "productName", label: "Product" },
     { key: "movementType", label: "Movement" },
@@ -699,16 +699,16 @@ const stockLedgerReport: ReportDefinition = {
       user.role === "WAREHOUSE" ? user.warehouseCode ?? "__none__" : filter.warehouseCode;
     const rows = await prisma.stockLedger.findMany({
       where: {
-        createdAt: { gte: filter.from, lte: filter.to },
+        movementDate: { gte: filter.from, lte: filter.to },
         ...(warehouseCode ? { warehouseId: warehouseCode } : {}),
         ...(filter.productCode ? { productCode: filter.productCode } : {}),
       },
       include: { warehouse: true, product: true, creator: { select: { name: true } } },
-      orderBy: { createdAt: "asc" },
+      orderBy: [{ movementDate: "asc" }, { createdAt: "asc" }],
       take: 5000,
     });
     return rows.map((row) => ({
-      createdAt: toZonedDateString(row.createdAt),
+      createdAt: toZonedDateString(row.movementDate),
       warehouseName: row.warehouse.name,
       productName: row.product.name,
       movementType: row.movementType.replace(/_/g, " "),
