@@ -60,25 +60,26 @@ describe("Sales Ops can correct a pending order", () => {
     expect(JSON.stringify(audit.oldValue)).toContain("100.000");
   });
 
-  it("corrects a rate typo and keeps the override marker + reason", async () => {
+  it("corrects a rate upward and keeps the override marker + reason", async () => {
     const order = await createOrder(ctx, "CUS-EDIT", [{ productCode: "COAL-IMPORT", qtyMt: "10.000" }]);
     const line = (await prisma.orderItem.findMany({ where: { orderId: order.id } }))[0]!;
     expect(line.lockedRatePerMt.toFixed(2)).toBe("20000.00");
 
+    // A rate may only go UP: the published rate is a hard floor.
     const result = await editPendingOrder(
       {
         orderId: order.id,
-        reason: "Rate entered with one zero missing; corrected to the published rate",
-        items: [{ orderItemId: line.id, qtyMt: "10.000", lockedRatePerMt: "18000.00" }],
+        reason: "Small-lot premium agreed with the customer",
+        items: [{ orderItemId: line.id, qtyMt: "10.000", lockedRatePerMt: "21000.00" }],
       },
       actor(ctx.ops),
     );
 
-    expect(result.order.totalValue).toBe("180000.00");
+    expect(result.order.totalValue).toBe("210000.00");
     const after = await prisma.orderItem.findUniqueOrThrow({ where: { id: line.id } });
-    expect(after.lockedRatePerMt.toFixed(2)).toBe("18000.00");
+    expect(after.lockedRatePerMt.toFixed(2)).toBe("21000.00");
     expect(after.rateOverridden).toBe(true);
-    expect(after.overrideReason).toContain("missing");
+    expect(after.overrideReason).toContain("premium");
   });
 
   it("updates the remarks too, and refuses a no-op edit", async () => {
@@ -163,14 +164,14 @@ describe("Sales Ops can correct a pending order", () => {
       {
         orderId: order.id,
         reason: "Customer confirmed 40 MT",
-        items: [{ orderItemId: line.id, qtyMt: "40.000", lockedRatePerMt: "45000.00" }],
+        items: [{ orderItemId: line.id, qtyMt: "40.000", lockedRatePerMt: "50000.00" }],
       },
       actor(ctx.ops),
     );
 
     const approved = await approveOrder({ orderId: order.id }, actor(ctx.ops));
     expect(approved.order.status).toBe("APPROVED");
-    expect(approved.order.totalValue).toBe("1800000.00");
+    expect(approved.order.totalValue).toBe("2000000.00");
     expect(orderProgress(approved.order.items).orderedMt).toBe("40.000");
   });
 });

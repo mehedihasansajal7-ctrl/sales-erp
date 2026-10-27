@@ -99,8 +99,10 @@ override with `DATABASE_URL_TEST`.
 Everything below is impossible to bypass from the UI, from the API, and (for quantities) from raw
 SQL.
 
-1. **Rate workflow** — Finance publishes a rate with an effective date/time. The rate is copied into
+1. **Rate workflow** - Finance publishes a rate with an effective date/time. The rate is copied into
    the order at creation and **locked permanently**; later rate changes never touch existing orders.
+   The published rate is a **hard floor**: no line may be priced below it, not even by 0.01 BDT.
+   A Sales Ops override may only raise a rate; a lower price needs Finance to publish a new rate.
    Rates are never edited in place (full history, one `ACTIVE` rate per product).
 2. **Approval** — A Delivery Order cannot be created for an order that is not `APPROVED`. The
    approval screen shows the checks (rate validity at order time, quantity, customer active,

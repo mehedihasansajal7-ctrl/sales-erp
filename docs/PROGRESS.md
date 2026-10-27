@@ -214,3 +214,21 @@ Going live 1 January. Audit findings that were fixed in code/config:
 * **Backups**: `scripts/backup-docker.sh` (dump inside the db container, verify with
   `pg_restore --list`, atomic rename, prune), `scripts/install-backup-cron.sh`,
   `scripts/restore-docker.sh`. README gained a go-live checklist.
+
+## Rate floor: never below the published rate (2026-10-27)
+
+Owner rule: *"rate er niche .00001 tk o allow na"*. Implemented as a hard floor in
+`order.service`:
+
+* `overrideOrderItemRate` and `editPendingOrder` compare the new rate with the rate Finance
+  published for that product on the order date (falling back to the locked rate if the rate has
+  since expired). Anything below it is rejected with
+  *"The rate cannot be below the published rate of X - not even by 0.01. To sell lower, Finance must
+  publish a new rate."* Raising a rate is allowed and stays audited (old + new value + reason).
+* `getOrderDetail` now exposes `publishedRatePerMt` per line, so the override dialog shows the floor,
+  sets `min` on the input and explains the rule; the "edit order" dialog carries the same warning.
+* Two older tests that deliberately lowered a rate were rewritten (they now prove an upward
+  correction; the downward case is covered by `tests/production-rules.test.ts`).
+* Note: `docker compose` now publishes Postgres on `127.0.0.1` only, so local `DATABASE_URL`s use
+  `127.0.0.1` instead of `localhost` (on Windows `localhost` resolves to IPv6 `::1`, which is no
+  longer bound). Suite: 137/137.

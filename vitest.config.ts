@@ -31,7 +31,7 @@ export default defineConfig({
       // bottleneck (otherwise we would be testing Prisma's pool, not our rules).
       DATABASE_URL:
         process.env.DATABASE_URL_TEST ??
-        "postgresql://postgres:postgres@localhost:5433/sales_erp_test?connection_limit=25&pool_timeout=60",
+        "postgresql://postgres:postgres@127.0.0.1:5433/sales_erp_test?connection_limit=25&pool_timeout=60",
       APP_TIMEZONE: "Asia/Dhaka",
       AUTH_SECRET: "test-secret-0123456789abcdefghijklmnop",
       CREDIT_CHECK_ENABLED: "true",

@@ -87,4 +87,51 @@ describe("Production rules", () => {
     // The flag is metadata, not a row: exports/iteration stay clean.
     expect(Object.keys(capped)).toHaveLength(10);
   });
+
+  it("never allows a rate below the published rate", async () => {
+    const { createOrder: create, overrideOrderItemRate, editPendingOrder } = await import(
+      "@/server/services/order.service"
+    );
+
+    const order = await create(
+      { customerCode: "CUS-XYZ", items: [{ productCode: "FERT-UREA", qtyMt: "3.000" }] },
+      { id: ctx.sales.id, name: ctx.sales.name, role: "SALES" },
+    );
+    const item = order.items[0]!;
+    const published = "50000.00";
+    const ops = { id: ctx.ops.id, name: ctx.ops.name, role: "SALES_OPS" };
+
+    // 0.01 below the published rate is refused.
+    await expect(
+      overrideOrderItemRate(
+        { orderItemId: item.id, lockedRatePerMt: "49999.99", reason: "Small discount" },
+        ops,
+      ),
+    ).rejects.toThrowError(/cannot be below the published rate/i);
+
+    // Exactly the published rate is fine, and so is anything above it.
+    const kept = await overrideOrderItemRate(
+      { orderItemId: item.id, lockedRatePerMt: published, reason: "Keep the published rate" },
+      ops,
+    );
+    expect(kept.lockedRatePerMt).toBe(published);
+
+    const raised = await overrideOrderItemRate(
+      { orderItemId: item.id, lockedRatePerMt: "51000.00", reason: "Small-lot premium" },
+      ops,
+    );
+    expect(raised.lockedRatePerMt).toBe("51000.00");
+
+    // The "correct the order" path obeys the same floor.
+    await expect(
+      editPendingOrder(
+        {
+          orderId: order.id,
+          reason: "Typo correction",
+          items: [{ orderItemId: item.id, qtyMt: "3.000", lockedRatePerMt: "49000.00" }],
+        },
+        ops,
+      ),
+    ).rejects.toThrowError(/cannot be below the published rate/i);
+  });
 });

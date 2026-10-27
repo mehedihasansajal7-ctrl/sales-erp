@@ -199,6 +199,11 @@ export function EditOrderDialog({
           <input type="hidden" name="orderId" value={orderId} />
           <input type="hidden" name="payload" value={payload} />
 
+          <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            A rate may only be <strong>raised</strong> here. Anything below the published rate is
+            rejected - not even by 0.01. A lower price needs Finance to publish a new rate.
+          </p>
+
           <div className="overflow-x-auto rounded-md border border-slate-200">
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
@@ -300,32 +305,42 @@ export function EditOrderDialog({
   );
 }
 
-/** SALES_OPS-only rate override on a pending order line (Rule 1, audited). */export function OverrideRateDialog({
+/** SALES_OPS-only rate override on a pending order line (Rule 1, audited). */
+export function OverrideRateDialog({
   orderItemId,
   productName,
   currentRate,
+  publishedRate,
 }: {
   orderItemId: string;
   productName: string;
   currentRate: string;
+  publishedRate: string;
 }) {
   return (
     <ConfirmActionDialog
       action={overrideOrderItemRateAction}
       triggerLabel="Override rate"
       triggerVariant="ghost"
-      title={`Override rate — ${productName}`}
-      description={`Current locked rate: ৳${currentRate}/MT. Sales Operations may change it before approval; a written reason is mandatory and the change is audited.`}
+      title={`Override rate - ${productName}`}
+      description={`Published rate: ${publishedRate}/MT. The rate may only go UP: anything below the published rate is rejected, not even by 0.01. A lower price needs Finance to publish a new rate. A written reason is mandatory and the change is audited.`}
       confirmLabel="Apply override"
       fields={{ orderItemId }}
       requireReason
       reasonLabel="Reason for the rate override"
     >
-      <Field label="New locked rate (৳ per MT)" htmlFor="lockedRatePerMt" required>
+      <Field
+        label="New locked rate (per MT)"
+        htmlFor="lockedRatePerMt"
+        required
+        hint={`Minimum ${publishedRate} - the published rate for this product.`}
+      >
         <Input
           id="lockedRatePerMt"
           name="lockedRatePerMt"
           inputMode="decimal"
+          min={publishedRate}
+          step="0.01"
           defaultValue={currentRate}
           required
         />

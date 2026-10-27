@@ -42,7 +42,10 @@ export function orderProgress(items: { qtyMt: unknown; deliveredMt: unknown; doA
   };
 }
 
-export function toOrderRow(order: OrderWithItems, extra: { totalDeliveredValue?: string } = {}) {
+export function toOrderRow(
+  order: OrderWithItems,
+  extra: { totalDeliveredValue?: string; publishedRateByItem?: Map<string, string> } = {},
+) {
   const progress = orderProgress(order.items);
   return {
     id: order.id,
@@ -69,6 +72,8 @@ export function toOrderRow(order: OrderWithItems, extra: { totalDeliveredValue?:
       doAllocatedMt: item.doAllocatedMt.toFixed(3),
       remainingMt: qty(dec(item.qtyMt).minus(dec(item.deliveredMt))).toFixed(3),
       lockedRatePerMt: item.lockedRatePerMt.toFixed(2),
+      publishedRatePerMt:
+        extra.publishedRateByItem?.get(item.id) ?? item.lockedRatePerMt.toFixed(2),
       lineValue: item.lineValue.toFixed(2),
       rateOverridden: item.rateOverridden,
     })),
@@ -353,7 +358,11 @@ export async function getOrderDetail(orderId: string, user: ServiceActor) {
     orderBy: { createdAt: "asc" },
   });
 
-  const row = toOrderRow(order);
+  const row = toOrderRow(order, {
+    publishedRateByItem: new Map(
+      order.items.map((item) => [item.id, item.rate.ratePerMt.toFixed(2)]),
+    ),
+  });
   const deliveredValue = order.items
     .reduce((acc, item) => acc.plus(dec(item.deliveredMt).mul(dec(item.lockedRatePerMt))), dec(0))
     .toFixed(2);
@@ -796,6 +805,31 @@ export async function shortCloseOrder(
  * Optional SALES_OPS-only rate override on a single line, with mandatory reason.
  * (Rule 1 — salespeople can never change a locked rate.)
  */
+/**
+ * The lowest rate an order line may carry: the rate Finance published for that
+ * product on the order date. Nothing may be sold below it - not even by 0.01 -
+ * so any discount has to be a new published rate, not a private deal.
+ */
+async function publishedRateFloor(
+  tx: Tx,
+  item: { productCode: string; lockedRatePerMt: unknown },
+  orderDate: Date,
+) {
+  const published = await findCurrentRate(tx, item.productCode, orderDate);
+  return published
+    ? money(published.ratePerMt)
+    : money(item.lockedRatePerMt as Parameters<typeof money>[0]);
+}
+
+function assertNotBelowFloor(newRate: ReturnType<typeof money>, floor: ReturnType<typeof money>) {
+  if (newRate.lt(floor)) {
+    throw errors.validation(
+      `The rate cannot be below the published rate of ${floor.toFixed(2)} BDT/MT - not even by 0.01. ` +
+        "To sell lower, Finance must publish a new rate.",
+    );
+  }
+}
+
 export async function overrideOrderItemRate(
   input: { orderItemId: string; lockedRatePerMt: string; reason: string },
   user: ServiceActor,
@@ -811,6 +845,8 @@ export async function overrideOrderItemRate(
       throw errors.rateLocked();
     }
     const newRate = money(input.lockedRatePerMt);
+    const floor = await publishedRateFloor(tx, item, item.order.orderDate);
+    assertNotBelowFloor(newRate, floor);
     const newLineValue = money(dec(item.qtyMt).mul(newRate)).toFixed(2);
 
     const updated = await tx.orderItem.update({
@@ -912,6 +948,12 @@ export async function editPendingOrder(
       const qtyChanged = !newQty.equals(dec(item.qtyMt));
       const rateChanged = !newRate.equals(dec(item.lockedRatePerMt));
       if (!qtyChanged && !rateChanged) continue;
+
+      // Same hard floor as the rate override: an edit may raise a price, never cut it.
+      if (rateChanged) {
+        const floor = await publishedRateFloor(tx, item, order.orderDate);
+        assertNotBelowFloor(newRate, floor);
+      }
 
       changes.push({
         item,

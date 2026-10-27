@@ -93,7 +93,7 @@ Each pending order is listed with the checks the brief requires:
   exceeded you must tick **Override the credit limit** and write a reason.
 
 Press **Approve order**, or **Reject** (a reason is mandatory and shown to the salesperson).
-You can also **Override rate** on a line before approving (reason mandatory, audited).
+You can also **Override rate** on a line before approving (reason mandatory, audited) - but the rate may only go **UP**. Anything below the published rate is refused, not even by 0.01 Taka: a lower price has to come from Finance publishing a new rate.
 
 **Fixed a typo instead of rejecting?** Use **Edit order** (top-right of the card, or on the order
 detail). Sales Operations can correct the **quantity**, the **rate** and the **remarks** of a pending

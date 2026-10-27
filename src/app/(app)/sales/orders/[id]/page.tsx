@@ -24,6 +24,7 @@ type LineRow = {
   doAllocatedMt: string;
   remainingMt: string;
   lockedRatePerMt: string;
+  publishedRatePerMt: string;
   lineValue: string;
   rateOverridden: boolean;
 };
@@ -109,6 +110,7 @@ export default async function OrderDetailPage({
                 orderItemId={row.id}
                 productName={row.productName}
                 currentRate={row.lockedRatePerMt}
+                publishedRate={row.publishedRatePerMt}
               />
             ),
           },
