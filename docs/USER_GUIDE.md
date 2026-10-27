@@ -54,8 +54,9 @@ a back-dated order or a dispatch loaded after midnight gets the correct day.
 **Sales → New order**
 
 1. Pick the **Customer** (only active customers appear).
-2. Leave **Order date & time** as it is unless you are back-dating the entry — it decides which
-   rate applies and the delivery priority.
+2. The **order date** is "now" for a salesperson - the rate published today is locked into the
+   order. Only a **super admin** can back-date an order (the form shows a date field only to them),
+   and a future date is refused for everybody.
 3. For each line choose the **Product** and type the **Quantity (MT)**. Use **Add line** for more
    products. The **Locked rate** is shown read-only and the line value and order total update live.
 4. Add **Remarks** if needed and press **Submit order for approval**.

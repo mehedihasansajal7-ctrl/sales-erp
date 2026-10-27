@@ -3,7 +3,7 @@ import { requirePermission } from "@/lib/auth";
 import { toAppError } from "@/lib/errors";
 import { toZonedDateString, zonedToUtc } from "@/lib/dates";
 import { rowsToCsv, reportsToExcel, reportsToPdf } from "@/server/services/export.service";
-import { REPORTS, getReport, type ReportKey } from "@/server/services/report.service";
+import { REPORTS, getReport, REPORT_ROW_LIMIT, type ReportKey } from "@/server/services/report.service";
 
 export const dynamic = "force-dynamic";
 
@@ -61,6 +61,9 @@ export async function GET(
       generatedBy: user.name,
       generatedAt: new Date(),
       filterNote: `${toZonedDateString(from)} → ${toParam}`,
+      warning: (rows as { truncated?: boolean }).truncated
+        ? `This export is incomplete: only the first ${REPORT_ROW_LIMIT} rows are included. Narrow the date range to export everything.`
+        : undefined,
     };
 
     const stamp = `${key}-${toZonedDateString()}`;
@@ -68,7 +71,9 @@ export async function GET(
     if (format === "csv") {
       const columns = resolved.columns.map((column) => column.label);
       const data = rows.map((row) => resolved.columns.map((column) => row[column.key] ?? ""));
-      return new NextResponse(rowsToCsv(columns, data), {
+      const csv = rowsToCsv(columns, data);
+      const body = meta.warning ? `# WARNING: ${meta.warning}\r\n${csv}` : csv;
+      return new NextResponse(body, {
         headers: {
           "content-type": "text/csv; charset=utf-8",
           "content-disposition": `attachment; filename="${stamp}.csv"`,

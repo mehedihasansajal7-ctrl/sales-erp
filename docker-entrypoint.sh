@@ -23,7 +23,7 @@ echo "[entrypoint] database is up."
 echo "[entrypoint] applying migrations…"
 npx prisma migrate deploy
 
-if [ "${SEED_ON_START:-true}" = "true" ]; then
+if [ "${SEED_ON_START:-false}" = "true" ]; then
   if [ "${SEED_DEFAULT_PASSWORD:-}" = "" ]; then
     export SEED_DEFAULT_PASSWORD="demo1234"
   fi

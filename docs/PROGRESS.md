@@ -191,3 +191,26 @@ Everything above was re-run after the last code change, on this machine, against
   entry forms, so every row lands in the ledger and the audit trail.
 * Tests: `tests/stock-entry.test.ts` (movement date persisted and distinct from `created_at`, future
   date rejected, opening-once rule, bulk parser with/without header, column mapping). Suite 132/132.
+
+## Production hardening (2026-10-27)
+
+Going live 1 January. Audit findings that were fixed in code/config:
+
+* **Secrets are mandatory**: `docker compose` uses `${AUTH_SECRET:?...}` and
+  `${POSTGRES_PASSWORD:?...}` (no public fallback), and `src/instrumentation.ts` crashes the
+  production server if `AUTH_SECRET` is missing, shorter than 32 chars or still a known placeholder.
+* **No demo backdoor**: `SEED_ON_START` defaults to `false`; the seed script additionally refuses to
+  run when the database already has orders (`SEED_FORCE=1` overrides, for demo machines only).
+* **Database not on the LAN**: port 5433 is published on `127.0.0.1` (`DB_BIND_ADDRESS`).
+* **Password reset enforced**: `/change-password` moved outside the `(app)` layout; that layout
+  redirects there while `mustChangePassword` is true, so a reset password cannot be kept forever.
+* **Error boundary** hides raw exception text in production (digest only); the details stay in the
+  server log.
+* **Report caps are visible**: `REPORT_ROW_LIMIT` (5000) truncation now sets a `truncated` flag -
+  an amber warning on the report page and a warning line in Excel / PDF / CSV.
+* **Order back-dating is super-admin only**: the order date picks the locked rate, so SALES cannot
+  send one (`createOrder` rejects it); the form hides the field for them and the action strips it.
+  Future dates are rejected for everyone. 4 new tests (`tests/production-rules.test.ts`).
+* **Backups**: `scripts/backup-docker.sh` (dump inside the db container, verify with
+  `pg_restore --list`, atomic rename, prune), `scripts/install-backup-cron.sh`,
+  `scripts/restore-docker.sh`. README gained a go-live checklist.

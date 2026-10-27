@@ -25,10 +25,13 @@ export function OrderCreateForm({
   customers,
   products,
   defaultOrderDate,
+  canBackdate,
 }: {
   customers: CustomerOption[];
   products: PricedProduct[];
   defaultOrderDate: string;
+  /** Only a super admin (ADMIN) may set a date other than "now". */
+  canBackdate: boolean;
 }) {
   const { state, formAction, pending } = useActionForm(createOrderAction);
   const [lines, setLines] = React.useState<Line[]>([{ key: "l1", productCode: "", qtyMt: "" }]);
@@ -91,13 +94,20 @@ export function OrderCreateForm({
             <FieldError state={state} name="customerCode" />
           </Field>
 
-          <Field
-            label="Order date &amp; time"
-            htmlFor="orderDate"
-            hint="Used for the locked rate, delivery priority and reporting."
-          >
-            <Input id="orderDate" name="orderDate" type="datetime-local" defaultValue={defaultOrderDate} />
-          </Field>
+          {canBackdate ? (
+            <Field
+              label="Order date &amp; time"
+              htmlFor="orderDate"
+              hint="Used for the locked rate, delivery priority and reporting. Back-dating is limited to super admins."
+            >
+              <Input id="orderDate" name="orderDate" type="datetime-local" defaultValue={defaultOrderDate} />
+            </Field>
+          ) : (
+            <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              <span className="font-medium text-slate-800">Order date: now.</span> The rate published
+              today is locked into this order. Only a super admin can back-date an order.
+            </div>
+          )}
         </CardContent>
       </Card>
 

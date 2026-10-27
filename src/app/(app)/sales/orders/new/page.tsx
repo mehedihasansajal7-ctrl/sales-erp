@@ -8,7 +8,7 @@ import { OrderCreateForm } from "@/components/forms/order-form";
 export const dynamic = "force-dynamic";
 
 export default async function NewOrderPage() {
-  await requirePermission("order.create");
+  const user = await requirePermission("order.create");
 
   const [customers, products] = await Promise.all([listCustomers({ isActive: true }), currentRates()]);
 
@@ -38,6 +38,7 @@ export default async function NewOrderPage() {
           hasRate: entry.hasRate,
         }))}
         defaultOrderDate={toDateTimeLocalValue()}
+        canBackdate={user.role === "ADMIN"}
       />
     </div>
   );

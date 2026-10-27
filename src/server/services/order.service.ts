@@ -91,6 +91,17 @@ export type CreateOrderInput = {
 export async function createOrder(input: CreateOrderInput, user: ServiceActor, ip?: string) {
   const at = input.orderDate ? zonedToUtc(input.orderDate) : new Date();
 
+  // The order date decides which published rate is locked and which day's document
+  // number is issued, so back-dating is a super-admin-only operation.
+  if (input.orderDate) {
+    if (user.role !== "ADMIN") {
+      throw errors.forbidden("back-dating an order (super admin only)");
+    }
+    if (at.getTime() > Date.now() + 5 * 60 * 1000) {
+      throw errors.validation("An order cannot be dated in the future.");
+    }
+  }
+
   return prisma.$transaction(async (tx) => {
     const customer = await tx.customer.findUnique({ where: { code: input.customerCode } });
     if (!customer) throw errors.notFound("Customer");

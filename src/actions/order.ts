@@ -35,7 +35,9 @@ export async function createOrderAction(
     const user = await requirePermission("order.create");
     const input = orderCreateSchema.parse({
       customerCode: str(formData, "customerCode"),
-      orderDate: str(formData, "orderDate") || undefined,
+      // Back-dating changes which published rate gets locked, so only a super admin
+      // may send an order date; everybody else always orders at "now".
+      orderDate: user.role === "ADMIN" ? str(formData, "orderDate") || undefined : undefined,
       remarks: str(formData, "remarks"),
       items: readJsonField<ItemPayload>(formData, "payload", []),
     });

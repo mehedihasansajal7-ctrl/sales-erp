@@ -36,6 +36,23 @@ export type ReportFilter = {
 
 export type ReportRow = Record<string, string>;
 
+/**
+ * A report result. `truncated` is set when the report hit `REPORT_ROW_LIMIT` - the
+ * screen and the exports show a warning instead of silently dropping rows.
+ */
+export type ReportRows = ReportRow[] & { truncated?: boolean };
+
+/** Hard safety cap per report; the UI and the exports warn when it is reached. */
+export const REPORT_ROW_LIMIT = 5000;
+
+export function capReportRows(rows: ReportRow[], limit = REPORT_ROW_LIMIT): ReportRows {
+  const capped: ReportRows = rows.slice(0, limit);
+  if (rows.length > limit) {
+    Object.defineProperty(capped, "truncated", { value: true, enumerable: false });
+  }
+  return capped;
+}
+
 export type ReportDefinition = {
   key: ReportKey;
   title: string;
@@ -49,7 +66,7 @@ export type ReportDefinition = {
   columnsFor?: (filter: ReportFilter, user: ServiceActor) => Promise<ReportColumn[]>;
   /** Extra selects rendered in the filter bar (e.g. a breakdown / grouping). */
   options?: { key: string; label: string; choices: { value: string; label: string }[] }[];
-  run: (filter: ReportFilter, user: ServiceActor) => Promise<ReportRow[]>;
+  run: (filter: ReportFilter, user: ServiceActor) => Promise<ReportRows>;
 };
 
 export type ReportKey =
@@ -705,9 +722,9 @@ const stockLedgerReport: ReportDefinition = {
       },
       include: { warehouse: true, product: true, creator: { select: { name: true } } },
       orderBy: [{ movementDate: "asc" }, { createdAt: "asc" }],
-      take: 5000,
+      take: REPORT_ROW_LIMIT + 1,
     });
-    return rows.map((row) => ({
+    return capReportRows(rows.map((row) => ({
       createdAt: toZonedDateString(row.movementDate),
       warehouseName: row.warehouse.name,
       productName: row.product.name,
@@ -717,7 +734,7 @@ const stockLedgerReport: ReportDefinition = {
       reservedAfter: dec(row.reservedAfter).toFixed(3),
       reference: row.refType ? `${row.refType}` : "",
       createdByName: row.creator?.name ?? "system",
-    }));
+    })));
   },
 };
 
@@ -846,10 +863,10 @@ const dispatchRegister: ReportDefinition = {
         items: { include: { deliveryOrderItem: { include: { product: true } } } },
       },
       orderBy: { dispatchDate: "asc" },
-      take: 5000,
+      take: REPORT_ROW_LIMIT + 1,
     });
 
-    return rows.map((row) => {
+    return capReportRows(rows.map((row) => {
       const total = row.items.reduce((acc, item) => acc.plus(dec(item.qtyMt)), dec(0));
       return {
         challanNo: row.challanNo,
@@ -867,7 +884,7 @@ const dispatchRegister: ReportDefinition = {
         loadingDate: dateCell(row.loadingDate),
         dispatchDate: dateCell(row.dispatchDate),
       };
-    });
+    }));
   },
 };
 

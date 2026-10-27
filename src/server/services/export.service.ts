@@ -39,6 +39,8 @@ export type ExportMeta = {
   generatedBy: string;
   generatedAt?: Date;
   filterNote?: string;
+  /** Shown in red when a report hit the row cap and the export is therefore partial. */
+  warning?: string;
 };
 
 // ---------------------------------------------------------------------------
@@ -67,6 +69,12 @@ export async function reportsToExcel(
     sheet.mergeCells(2, 1, 2, Math.max(1, report.columns.length));
     sheet.getCell(2, 1).value = `${meta.subtitle ?? ""} ${meta.filterNote ?? ""}`.trim();
     sheet.getCell(2, 1).font = { size: 10, italic: true };
+
+    if (meta.warning) {
+      sheet.mergeCells(3, 1, 3, Math.max(1, report.columns.length));
+      sheet.getCell(3, 1).value = meta.warning;
+      sheet.getCell(3, 1).font = { size: 10, bold: true, color: { argb: "FFB91C1C" } };
+    }
 
     const headerRow = sheet.getRow(4);
     report.columns.forEach((column, index) => {
@@ -139,6 +147,9 @@ export async function reportsToPdf(
             )}${meta.filterNote ? ` • ${meta.filterNote}` : ""}`,
           ),
         );
+      if (meta.warning) {
+        doc.fontSize(9).fillColor("#b91c1c").text(pdfText(meta.warning));
+      }
       doc.fillColor("#0f172a").moveDown(0.6);
 
       if (rows.length === 0) {

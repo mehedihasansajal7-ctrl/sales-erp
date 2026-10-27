@@ -11,11 +11,14 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      # Required: docker compose refuses to start without it. Changing it later does
+      # NOT change the password of an existing volume - set it before the first start.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env (use a long random value for production)}
       POSTGRES_DB: sales_erp
     ports:
-      # 5433 on the host so it can coexist with other local Postgres instances.
-      - "5433:5432"
+      # Bound to localhost only: the database must never be reachable from the LAN.
+      # Remove this block entirely when the app runs on its own server.
+      - "${DB_BIND_ADDRESS:-127.0.0.1}:5433:5432"
     volumes:
       - sales_erp_pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -32,15 +35,17 @@ services:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@db:5432/sales_erp?schema=public&connection_limit=10&pool_timeout=20
-      # CHANGE THIS in production: it signs every session cookie.
-      AUTH_SECRET: ${AUTH_SECRET:-change-me-in-production-please-use-a-long-random-string}
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/sales_erp?schema=public&connection_limit=10&pool_timeout=20
+      # Required. Signs every session cookie: without a real secret anybody could
+      # forge an admin session. Generate with: openssl rand -base64 48
+      AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env (32+ random characters) - docker compose will not start without it}
       SESSION_MAX_AGE_SECONDS: ${SESSION_MAX_AGE_SECONDS:-43200}
       APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Dhaka}
       CREDIT_CHECK_ENABLED: ${CREDIT_CHECK_ENABLED:-true}
       PRIORITY_OVERRIDE_ENABLED: ${PRIORITY_OVERRIDE_ENABLED:-true}
-      # Demo data is created once on first start (idempotent). Set to false later.
-      SEED_ON_START: ${SEED_ON_START:-true}
+      # Demo data is OFF by default: in production the database must contain only real
+      # records. Set SEED_ON_START=true only on a fresh demo/testing machine.
+      SEED_ON_START: ${SEED_ON_START:-false}
       SEED_DEFAULT_PASSWORD: ${SEED_DEFAULT_PASSWORD:-demo1234}
       # Optional: point this at a Unicode TTF to render ৳ and Bangla inside PDFs.
       PDF_FONT_PATH: ${PDF_FONT_PATH:-}

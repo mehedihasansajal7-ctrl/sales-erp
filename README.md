@@ -189,20 +189,60 @@ can do.
 ```bash
 git clone <repo> && cd sales-erp
 cp .env.example .env
-#  set at least: DATABASE_URL (or use the bundled db service), AUTH_SECRET, POSTGRES_PASSWORD
+#  set POSTGRES_PASSWORD, AUTH_SECRET (openssl rand -base64 48) and DATABASE_URL
 docker compose up -d --build
 docker compose ps                  # both services must be healthy
 curl http://localhost:3001/api/health
 ```
 
-* **Reverse proxy / TLS** — put nginx/Caddy in front of port 3001 and terminate TLS there.
-  The app already sets `X-Content-Type-Options`, `X-Frame-Options` and `Referrer-Policy`, uses
-  `Secure` cookies in production and validates same-origin on state-changing requests.
-* **Backups** — schedule `./scripts/backup.sh` (cron/Task Scheduler) and copy the dumps off the
-  machine. Restore steps are printed by the script and repeated in `docs/HUMAN_TODO.md`.
-* **Scaling** — the app is stateless apart from the database and the in-process login rate limiter.
-  To run more than one instance, move the rate limiter to Redis (see `docs/ASSUMPTIONS.md`).
-* **Docker Hub is not required**: `docker compose up --build` builds the image on the target server.
+### Production hardening (already wired in)
+
+* **Secrets are mandatory.** `docker compose` refuses to start without `AUTH_SECRET` and
+  `POSTGRES_PASSWORD` (`${VAR:?message}`), and the app re-checks `AUTH_SECRET` at boot
+  (`src/instrumentation.ts`): a missing, short or placeholder secret crashes the server instead
+  of silently signing sessions with a public value.
+* **No demo data.** `SEED_ON_START` defaults to `false`; even if it is enabled, the seed script
+  skips any database that already contains orders. Demo users (`demo1234`) are never created in
+  production.
+* **The database is not exposed.** Port 5433 is published on `127.0.0.1` only (override with
+  `DB_BIND_ADDRESS` for a deliberate maintenance window).
+* **Password resets are enforced.** When an administrator resets a password the account is
+  redirected to `/change-password` and cannot use the rest of the system until it is changed.
+* **Error pages do not leak internals.** In production the error boundary shows a generic message
+  plus a digest; the raw exception stays in the server log.
+* **Report caps are visible.** A report that reaches 5 000 rows shows a warning on screen and the
+  same warning is written into the Excel / PDF / CSV export, so a partial export is never mistaken
+  for a complete one.
+
+### Backups (do this before going live)
+
+```bash
+./scripts/install-backup-cron.sh    # daily 01:15 backup, keeps BACKUP_KEEP_DAYS (14)
+./scripts/backup-docker.sh          # run one now and check the output
+./scripts/restore-docker.sh backups/sales_erp_YYYY-MM-DD_HHMMSS.dump   # restore drill
+```
+
+`backup-docker.sh` dumps inside the db container (nothing to install on the host), writes to a
+temporary file, verifies it with `pg_restore --list` and only then renames it. Copy `backups/` to
+another disk or off-site storage - a backup on the same machine is not a backup.
+
+### Go-live checklist
+
+1. Fresh database (do **not** reuse the demo database) and a real `AUTH_SECRET`.
+2. Create the real users (Admin -> Users & roles): at least one ADMIN, Finance, Sales Ops, one
+   account per warehouse. Delete the demo accounts if they exist.
+3. Master data: warehouses, products, customers, opening rates - all three screens have **Bulk add**.
+4. Opening stock per warehouse/product (Warehouse -> Stock & inward -> **Bulk entry**).
+5. One full test chain: order -> approve -> DO -> dispatch -> challan -> report/export.
+6. Install the backup cron and **restore the dump into a scratch database once**.
+7. Put TLS in front (Caddy/nginx) - passwords must never travel over plain HTTP.
+
+### Scaling and operations
+
+* The app is stateless apart from the database and the in-process login rate limiter. To run more
+  than one instance, move the rate limiter to Redis (see `docs/ASSUMPTIONS.md`).
+* Docker Hub is not required: `docker compose up --build` builds the image on the server.
+* Health: `GET /api/health` reports the database latency; point an uptime monitor at it.
 
 ---
 

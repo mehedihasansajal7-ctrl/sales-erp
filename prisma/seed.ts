@@ -206,6 +206,17 @@ async function seedRates() {
 }
 
 async function main() {
+  // Safety net for production: demo rows must never overwrite a live database.
+  // The entrypoint defaults SEED_ON_START to false, and even when it is enabled the
+  // seed refuses to touch a database that already contains real orders.
+  const existingOrders = await prisma.order.count();
+  if (existingOrders > 0 && process.env.SEED_FORCE !== "1") {
+    console.log(
+      `Seed skipped: the database already contains ${existingOrders} order(s). ` +
+        "Set SEED_FORCE=1 only if you really want to re-run the demo seed.",
+    );
+    return;
+  }
   console.log("Seeding the sales ERP demo database…");
   await seedSettings();
   // Warehouses must exist before users (a warehouse user is bound to one).

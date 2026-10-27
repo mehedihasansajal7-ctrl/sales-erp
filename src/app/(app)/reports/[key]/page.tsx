@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requirePermission } from "@/lib/auth";
 import { defaultFromZonedDateString, toZonedDateString, zonedToUtc } from "@/lib/dates";
-import { REPORTS, getReport } from "@/server/services/report.service";
+import { REPORTS, getReport, REPORT_ROW_LIMIT } from "@/server/services/report.service";
 import { listCustomers, listProducts, listWarehouses } from "@/server/services/master-data.service";
 import { formatBdt, formatMt, formatNumber } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -242,6 +242,16 @@ export default async function ReportPage({
           </form>
         </CardContent>
       </Card>
+
+      {rows.truncated ? (
+        <div
+          role="alert"
+          className="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+        >
+          <strong>Showing the first {REPORT_ROW_LIMIT} rows only.</strong> This list (and the Excel /
+          PDF / CSV export) is incomplete - narrow the date range or add a filter to see the rest.
+        </div>
+      ) : null}
 
       <DataTable
         columns={columns}
