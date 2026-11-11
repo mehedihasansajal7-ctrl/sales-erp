@@ -34,9 +34,8 @@ yarn-error.log*
 .env.local
 .env*.local
 
-# database dumps / backups
-/backups/*.sql
-/backups/*.gz
+# database dumps / backups (contain live business data - never commit)
+/backups/
 *.db
 *.db-journal
 

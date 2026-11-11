@@ -232,3 +232,19 @@ Owner rule: *"rate er niche .00001 tk o allow na"*. Implemented as a hard floor 
 * Note: `docker compose` now publishes Postgres on `127.0.0.1` only, so local `DATABASE_URL`s use
   `127.0.0.1` instead of `localhost` (on Windows `localhost` resolves to IPv6 `::1`, which is no
   longer bound). Suite: 137/137.
+
+## Backups installed + restore drill (2026-11-11)
+
+* Windows host: `scripts/backup-docker.ps1` (pg_dump inside the db container, `pg_restore --list`
+  verification, atomic move, prune after `KeepDays`), `scripts/install-backup-task.ps1` (Task
+  Scheduler "SalesERP-DB-Backup", daily 01:15, `StartWhenAvailable` so a slept PC catches up) and
+  `scripts/restore-drill.ps1`.
+* **Task installed and run once**: `LastTaskResult = 0`, dump written to `backups/`.
+* **Restore drill PASSED**: newest dump restored into the scratch database `sales_erp_restore_drill`,
+  all 15 tables matched live (users 9, orders 14, order_items 17, dispatches 2, stock_ledger 27,
+  audit_logs 190, ...), the restored copy answered the core queries
+  (`14 | 28217650.00 | 27 | 190`), then the scratch database was dropped. The live database was
+  never written to.
+* `/backups/` is now git-ignored wholesale (the dumps contain live business data).
+* Docs: README gained the Windows/Linux backup instructions; the Linux `.sh` versions stay for the
+  production server.

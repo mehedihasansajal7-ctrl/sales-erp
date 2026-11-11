@@ -218,15 +218,32 @@ curl http://localhost:3001/api/health
 
 ### Backups (do this before going live)
 
+**Linux / macOS server**
+
 ```bash
 ./scripts/install-backup-cron.sh    # daily 01:15 backup, keeps BACKUP_KEEP_DAYS (14)
 ./scripts/backup-docker.sh          # run one now and check the output
-./scripts/restore-docker.sh backups/sales_erp_YYYY-MM-DD_HHMMSS.dump   # restore drill
+./scripts/restore-docker.sh backups/sales_erp_YYYY-MM-DD_HHMMSS.dump   # full restore
 ```
 
-`backup-docker.sh` dumps inside the db container (nothing to install on the host), writes to a
-temporary file, verifies it with `pg_restore --list` and only then renames it. Copy `backups/` to
-another disk or off-site storage - a backup on the same machine is not a backup.
+**Windows host (PowerShell + Task Scheduler)**
+
+```powershell
+.\scripts\backup-docker.ps1            # run one now
+.\scripts\install-backup-task.ps1      # daily 01:15 scheduled task, catches up if the PC slept
+.\scripts\restore-drill.ps1            # PROVE the newest backup restores (scratch database)
+Get-ScheduledTaskInfo -TaskName "SalesERP-DB-Backup"
+```
+
+All four scripts dump **inside** the db container (nothing to install on the host). The dump is
+written to a temp name, verified with `pg_restore --list` and only then kept - a partial file can
+never look like a backup. `restore-drill.ps1` restores into a scratch database, compares the row
+counts of 15 tables with the live database and drops the scratch copy; the live data is never
+touched. Copy `backups/` to another disk or off-site storage - a backup on the same machine is not
+a backup.
+
+> A restore drill has been run on this machine: 15/15 tables matched, the restored copy answered the
+> core business queries, and the scratch database was dropped afterwards.
 
 ### Go-live checklist
 
