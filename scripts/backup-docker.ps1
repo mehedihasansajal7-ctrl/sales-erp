@@ -18,11 +18,12 @@ param(
     [string]$Container = "sales-erp-postgres",
     [string]$Database = "sales_erp",
     [string]$DbUser = "postgres",
-    # Where the dump is copied after it has been verified. Defaults to the OneDrive
-    # folder that already syncs this project, so the copy leaves the machine as soon
-    # as OneDrive syncs. Point it at a USB/network drive with -OffsiteDir "X:\...".
-    # Pass -OffsiteDir "" to skip the off-site copy.
-    [string]$OffsiteDir = ""
+    # Where the dump is copied after it has been verified. Several destinations are
+    # allowed. Leave empty for the defaults (the OneDrive folder that syncs this
+    # project, plus Google Drive when it is mounted) so the copy leaves the machine
+    # as soon as either client syncs. Point it at a USB/network drive with
+    # -OffsiteDir "X:\SalesERP-Backups" (a missing drive is skipped, not fatal).
+    [string[]]$OffsiteDir = @()
 )
 
 $ErrorActionPreference = "Stop"
@@ -94,45 +95,65 @@ Get-ChildItem -Path $BackupDir -Filter "sales_erp_*.dump" -File |
     ForEach-Object { Write-Log ("  {0}  {1} MB" -f $_.Name, [math]::Round($_.Length / 1MB, 2)) }
 
 # ---------------------------------------------------------------------------
-# Off-site copy (OneDrive / USB / network share). A backup that only exists on the
-# same disk as the database is not a backup: this copy is hash-verified, and it is
-# pruned with the same retention as the local one. A failed copy makes the task
-# show a non-zero result instead of failing silently.
+# Off-site copy (OneDrive / Google Drive / USB / network share).
+#
+# A backup that only exists on the same disk as the database is not a backup. Every
+# destination is hash-verified and pruned with the same retention. Several copies are
+# made; one failing (a USB stick left at home, a paused cloud client) only logs a
+# warning - the backup is marked failed only when NO destination received the file.
 # ---------------------------------------------------------------------------
-if (-not $OffsiteDir) {
-    $candidate = "D:\OneDrive\Desktop\SFUWT-Project-Backup-2026-09-27\sales-erp-backups"
-    if (Test-Path (Split-Path $candidate -Parent)) { $OffsiteDir = $candidate }
+$destinations = @($OffsiteDir | Where-Object { $_ })
+
+if ($destinations.Count -eq 0) {
+    $defaults = @(
+        "D:\OneDrive\Desktop\SFUWT-Project-Backup-2026-09-27\sales-erp-backups",
+        "G:\My Drive\SalesERP-Backups"
+    )
+    foreach ($candidate in $defaults) {
+        if (Test-Path (Split-Path $candidate -Parent)) { $destinations += $candidate }
+    }
 }
 
-if ($OffsiteDir) {
+$offsiteOk = 0
+foreach ($directory in $destinations) {
     try {
-        New-Item -ItemType Directory -Force -Path $OffsiteDir | Out-Null
-        $destination = Join-Path $OffsiteDir (Split-Path $target -Leaf)
-        Copy-Item -Path $target -Destination $destination -Force
+        $parent = Split-Path $directory -Parent
+        if (-not (Test-Path $parent)) { throw "drive/folder not available ($parent)" }
+
+        New-Item -ItemType Directory -Force -Path $directory | Out-Null
+        $copyPath = Join-Path $directory (Split-Path $target -Leaf)
+        Copy-Item -Path $target -Destination $copyPath -Force
 
         $sourceHash = (Get-FileHash -Path $target -Algorithm SHA256).Hash
-        $copyHash = (Get-FileHash -Path $destination -Algorithm SHA256).Hash
+        $copyHash = (Get-FileHash -Path $copyPath -Algorithm SHA256).Hash
         if ($sourceHash -ne $copyHash) { throw "hash mismatch after copy" }
 
-        Write-Log "off-site copy ok -> $destination"
+        Write-Log "off-site copy ok -> $copyPath"
+        $offsiteOk++
 
-        $oldCopies = Get-ChildItem -Path $OffsiteDir -Filter "sales_erp_*.dump" -File |
+        $oldCopies = Get-ChildItem -Path $directory -Filter "sales_erp_*.dump" -File |
             Where-Object { $_.LastWriteTime -lt $cutoff }
         foreach ($file in $oldCopies) {
             Remove-Item -Force $file.FullName
-            Write-Log ("off-site pruned {0}" -f $file.Name)
-        }
-
-        $onedrive = Get-Process OneDrive -ErrorAction SilentlyContinue
-        if (-not $onedrive) {
-            Write-Log "WARNING: OneDrive is not running, so the copy has not left the machine yet."
+            Write-Log ("off-site pruned {0} ({1})" -f $file.Name, $directory)
         }
     } catch {
-        Write-Log ("OFF-SITE COPY FAILED: {0} (local backup is still good)" -f $_.Exception.Message)
-        exit 2
+        Write-Log ("WARNING: off-site copy to {0} failed: {1}" -f $directory, $_.Exception.Message)
     }
-} else {
+}
+
+if ($destinations.Count -eq 0) {
     Write-Log "no off-site directory configured - copy $BackupDir somewhere else yourself."
+} elseif ($offsiteOk -eq 0) {
+    Write-Log "FAILED: none of the off-site destinations received the backup (local copy is good)."
+    exit 2
+} else {
+    Write-Log ("off-site: {0} of {1} destination(s) updated" -f $offsiteOk, $destinations.Count)
+}
+
+$onedrive = Get-Process OneDrive -ErrorAction SilentlyContinue
+if (-not $onedrive) {
+    Write-Log "WARNING: OneDrive is not running, so its copy has not left the machine yet."
 }
 
 Write-Log "remember to keep at least one copy off this machine."

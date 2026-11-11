@@ -277,3 +277,17 @@ Owner rule: *"rate er niche .00001 tk o allow na"*. Implemented as a hard floor 
 * Reminder for the operator: the dumps still live under `D:\OneDrive`, which is the same physical
   disk as the database. OneDrive uploads them, but for a true second copy an external/network
   destination via `-OffsiteDir` is still the safer setup.
+
+## Two off-site destinations (2026-11-11)
+
+* The host has a single physical disk (C: + D: are partitions of the same NVMe), so a copy to another
+  letter would not survive a disk failure. Google Drive is mounted as `G:` - it is now the second
+  automated destination next to the OneDrive folder:
+  `G:\My Drive\SalesERP-Backups`.
+* `backup-docker.ps1` now takes `[string[]]$OffsiteDir`; the defaults are the OneDrive folder and
+  `G:\My Drive\SalesERP-Backups` (only when the drive exists). Every destination is hash-verified and
+  pruned with the same retention. A missing destination logs a warning; the task fails only when
+  **no** destination received the dump.
+* Verified: `off-site: 2 of 2 destination(s) updated`, scheduled task `LastTaskResult = 0`.
+* Note: both cloud copies are unencrypted dumps (customer data + password hashes). Encryption is the
+  next hardening step if any dump may leave the owner's private cloud accounts.
