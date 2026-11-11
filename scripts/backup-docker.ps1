@@ -17,7 +17,12 @@ param(
     [int]$KeepDays = 14,
     [string]$Container = "sales-erp-postgres",
     [string]$Database = "sales_erp",
-    [string]$DbUser = "postgres"
+    [string]$DbUser = "postgres",
+    # Where the dump is copied after it has been verified. Defaults to the OneDrive
+    # folder that already syncs this project, so the copy leaves the machine as soon
+    # as OneDrive syncs. Point it at a USB/network drive with -OffsiteDir "X:\...".
+    # Pass -OffsiteDir "" to skip the off-site copy.
+    [string]$OffsiteDir = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -88,4 +93,46 @@ Get-ChildItem -Path $BackupDir -Filter "sales_erp_*.dump" -File |
     Select-Object -First 5 |
     ForEach-Object { Write-Log ("  {0}  {1} MB" -f $_.Name, [math]::Round($_.Length / 1MB, 2)) }
 
-Write-Log "remember to copy $BackupDir to another disk or off-site storage."
+# ---------------------------------------------------------------------------
+# Off-site copy (OneDrive / USB / network share). A backup that only exists on the
+# same disk as the database is not a backup: this copy is hash-verified, and it is
+# pruned with the same retention as the local one. A failed copy makes the task
+# show a non-zero result instead of failing silently.
+# ---------------------------------------------------------------------------
+if (-not $OffsiteDir) {
+    $candidate = "D:\OneDrive\Desktop\SFUWT-Project-Backup-2026-09-27\sales-erp-backups"
+    if (Test-Path (Split-Path $candidate -Parent)) { $OffsiteDir = $candidate }
+}
+
+if ($OffsiteDir) {
+    try {
+        New-Item -ItemType Directory -Force -Path $OffsiteDir | Out-Null
+        $destination = Join-Path $OffsiteDir (Split-Path $target -Leaf)
+        Copy-Item -Path $target -Destination $destination -Force
+
+        $sourceHash = (Get-FileHash -Path $target -Algorithm SHA256).Hash
+        $copyHash = (Get-FileHash -Path $destination -Algorithm SHA256).Hash
+        if ($sourceHash -ne $copyHash) { throw "hash mismatch after copy" }
+
+        Write-Log "off-site copy ok -> $destination"
+
+        $oldCopies = Get-ChildItem -Path $OffsiteDir -Filter "sales_erp_*.dump" -File |
+            Where-Object { $_.LastWriteTime -lt $cutoff }
+        foreach ($file in $oldCopies) {
+            Remove-Item -Force $file.FullName
+            Write-Log ("off-site pruned {0}" -f $file.Name)
+        }
+
+        $onedrive = Get-Process OneDrive -ErrorAction SilentlyContinue
+        if (-not $onedrive) {
+            Write-Log "WARNING: OneDrive is not running, so the copy has not left the machine yet."
+        }
+    } catch {
+        Write-Log ("OFF-SITE COPY FAILED: {0} (local backup is still good)" -f $_.Exception.Message)
+        exit 2
+    }
+} else {
+    Write-Log "no off-site directory configured - copy $BackupDir somewhere else yourself."
+}
+
+Write-Log "remember to keep at least one copy off this machine."

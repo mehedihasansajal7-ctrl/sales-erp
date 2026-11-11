@@ -248,3 +248,17 @@ Owner rule: *"rate er niche .00001 tk o allow na"*. Implemented as a hard floor 
 * `/backups/` is now git-ignored wholesale (the dumps contain live business data).
 * Docs: README gained the Windows/Linux backup instructions; the Linux `.sh` versions stay for the
   production server.
+
+## Automatic off-site backup copy (2026-11-11)
+
+* `backup-docker.ps1` now copies every verified dump to
+  `D:\OneDrive\Desktop\SFUWT-Project-Backup-2026-09-27\sales-erp-backups` (the folder OneDrive already
+  syncs), compares SHA-256 hashes, logs `off-site copy ok` and prunes the copy with the same 14-day
+  retention. A failed copy exits with code 2 so Task Scheduler shows it as failed; the local backup
+  stays valid.
+* The destination is a parameter: `-OffsiteDir "X:\SalesERP-Backups"` for a USB/network drive, or
+  `-OffsiteDir ""` to disable.
+* If OneDrive is not running the script logs a warning (the copy is on disk but has not been uploaded
+  yet).
+* Database dumps are deliberately **not** pushed to git: they contain customer data, password hashes
+  and the full audit trail. Git keeps the code, migrations and scripts only.
