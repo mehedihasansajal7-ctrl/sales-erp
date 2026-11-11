@@ -262,3 +262,18 @@ Owner rule: *"rate er niche .00001 tk o allow na"*. Implemented as a hard floor 
   yet).
 * Database dumps are deliberately **not** pushed to git: they contain customer data, password hashes
   and the full audit trail. Git keeps the code, migrations and scripts only.
+
+## OneDrive autostart + monthly drill (2026-11-11)
+
+* `OneDrive-Autostart.cmd` in the per-user Startup folder starts OneDrive at logon only when it is not
+  already running, so the nightly off-site copy keeps leaving the machine even if OneDrive was closed
+  by hand. Started it manually as well (the earlier dump was waiting on disk).
+* New scheduled task **`SalesERP-Backup-Drill`** (1st of every month, 02:30, via
+  `scripts/install-drill-task.ps1` + `scripts/run-drill.cmd`, because Windows PowerShell 5.1 cannot
+  build a monthly trigger with `New-ScheduledTaskTrigger`). It runs `restore-drill.ps1`, writes
+  `backups/drill.log` and exits non-zero when the restore does not match live.
+* Verified: `SalesERP-DB-Backup` last result 0 (next 01:15 daily), `SalesERP-Backup-Drill` last
+  result 0 with `RESULT: PASS - every table matched the live database` (next 1 Dec 02:30).
+* Reminder for the operator: the dumps still live under `D:\OneDrive`, which is the same physical
+  disk as the database. OneDrive uploads them, but for a true second copy an external/network
+  destination via `-OffsiteDir` is still the safer setup.

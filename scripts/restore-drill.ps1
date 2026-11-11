@@ -19,21 +19,34 @@ param(
     [string]$Container = "sales-erp-postgres",
     [string]$LiveDb = "sales_erp",
     [string]$DrillDb = "sales_erp_restore_drill",
-    [string]$DbUser = "postgres"
+    [string]$DbUser = "postgres",
+    # Appended to by the monthly scheduled drill so the result is visible later.
+    [string]$LogFile = (Join-Path (Split-Path -Parent $PSScriptRoot) "backups\drill.log")
 )
 
 # Native tools (docker/psql) write NOTICEs to stderr; with "Stop" PowerShell turns those
 # into terminating errors. Every important call below checks $LASTEXITCODE explicitly.
 $ErrorActionPreference = "Continue"
 
+function Write-Log([string]$message) {
+    $line = "[{0}] {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $message
+    Write-Host $line
+    $dir = Split-Path -Parent $LogFile
+    if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+    Add-Content -Path $LogFile -Value $line -Encoding utf8
+}
+
 if (-not $Dump) {
     $Dump = Get-ChildItem -Path $BackupDir -Filter "sales_erp_*.dump" -File |
         Sort-Object LastWriteTime -Descending |
         Select-Object -First 1 -ExpandProperty FullName
 }
-if (-not $Dump -or -not (Test-Path $Dump)) { throw "No backup found in $BackupDir" }
+if (-not $Dump -or -not (Test-Path $Dump)) {
+    Write-Log "RESULT: FAIL - no backup found in $BackupDir"
+    throw "No backup found in $BackupDir"
+}
 
-Write-Host "[drill] dump:    $Dump ($([math]::Round((Get-Item $Dump).Length / 1MB, 2)) MB)"
+Write-Log "drill start - dump: $Dump ($([math]::Round((Get-Item $Dump).Length / 1MB, 2)) MB)"
 Write-Host "[drill] scratch: $DrillDb (the live database '$LiveDb' is not touched)"
 
 $inside = "/tmp/restore_drill.dump"
@@ -92,16 +105,16 @@ Write-Host "[drill] restored database answers: orders / order value / ledger row
 
 if ($mismatch -gt 0) {
     Write-Host ""
-    Write-Host "[drill] RESULT: FAILED - $mismatch table(s) differ. The scratch database was kept for inspection."
+    Write-Log "RESULT: FAIL - $mismatch table(s) differ. The scratch database was kept for inspection."
     Write-Host "        inspect with: docker exec -it $Container psql -U $DbUser -d $DrillDb"
     exit 1
 }
 
 Write-Host ""
-Write-Host "[drill] RESULT: PASS - every table matched the live database."
+Write-Log "RESULT: PASS - every table matched the live database."
 Write-Host "[drill] dropping the scratch database"
 
 docker exec $Container psql -U $DbUser -d postgres -q -c "DROP DATABASE IF EXISTS $DrillDb;" 2>$null | Out-Null
 docker exec $Container rm -f $inside | Out-Null
 
-Write-Host "[drill] done - backup is usable."
+Write-Log "drill done - backup is usable."

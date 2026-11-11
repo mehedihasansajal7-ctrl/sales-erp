@@ -230,20 +230,41 @@ curl http://localhost:3001/api/health
 
 ```powershell
 .\scripts\backup-docker.ps1            # run one now
-.\scripts\install-backup-task.ps1      # daily 01:15 scheduled task, catches up if the PC slept
+.\scripts\install-backup-task.ps1      # daily 01:15 task, catches up if the PC slept
 .\scripts\restore-drill.ps1            # PROVE the newest backup restores (scratch database)
+.\scripts\install-drill-task.ps1       # monthly drill on the 1st at 02:30
 Get-ScheduledTaskInfo -TaskName "SalesERP-DB-Backup"
+Get-Content backups\drill.log -Tail 5
 ```
 
-All four scripts dump **inside** the db container (nothing to install on the host). The dump is
-written to a temp name, verified with `pg_restore --list` and only then kept - a partial file can
-never look like a backup. `restore-drill.ps1` restores into a scratch database, compares the row
-counts of 15 tables with the live database and drops the scratch copy; the live data is never
-touched. Copy `backups/` to another disk or off-site storage - a backup on the same machine is not
-a backup.
+All scripts dump **inside** the db container (nothing to install on the host). The dump is written
+to a temp name, verified with `pg_restore --list` and only then kept - a partial file can never look
+like a backup. `restore-drill.ps1` restores into a scratch database, compares the row counts of 15
+tables with the live database and drops the scratch copy; the live data is never touched.
 
-> A restore drill has been run on this machine: 15/15 tables matched, the restored copy answered the
-> core business queries, and the scratch database was dropped afterwards.
+**Off-site copy (automatic):** after verification the dump is copied to
+`D:\OneDrive\Desktop\SFUWT-Project-Backup-2026-09-27\sales-erp-backups`, the SHA-256 hash is
+compared, and the copy is pruned with the same 14-day retention. OneDrive then syncs it to the
+cloud. Point the copy at a USB/network drive with
+`.\scripts\backup-docker.ps1 -OffsiteDir "X:\SalesERP-Backups"`, or skip it with `-OffsiteDir ""`.
+A failed copy makes the task report a non-zero result instead of failing silently.
+
+OneDrive is started at logon by `OneDrive-Autostart.cmd` in the user Startup folder (only when it
+is not already running), so the nightly copy keeps leaving the machine even if OneDrive was closed
+by hand.
+
+| Task | When | What |
+|---|---|---|
+| `SalesERP-DB-Backup` | daily 01:15 | dump -> verify -> local keep -> off-site copy; log `backups\backup.log` |
+| `SalesERP-Backup-Drill` | 1st of every month, 02:30 | restore the newest dump into a scratch DB, compare 15 tables, drop it; log `backups\drill.log` |
+
+> Both have been run on this machine: backup `result 0`, drill `RESULT: PASS` (15/15 tables), and
+> the scratch database was dropped afterwards.
+
+> **Never commit a database dump to git.** The dumps contain customer data, password hashes and the
+> whole audit trail; git history is permanent and would also corrupt on every binary diff. Git holds
+> the code, migrations and these scripts - the data belongs in the backup folder (encrypted if it
+> goes to a third-party cloud).
 
 ### Go-live checklist
 
