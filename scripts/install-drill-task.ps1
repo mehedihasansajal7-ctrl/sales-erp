@@ -21,6 +21,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$ScriptRoot = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
+if (-not $BackupDir) { $BackupDir = Join-Path (Split-Path -Parent $ScriptRoot) "backups" }
+
 $wrapper = Join-Path $PSScriptRoot "run-drill.cmd"
 if (-not (Test-Path $wrapper)) { throw "run-drill.cmd not found next to this script" }
 

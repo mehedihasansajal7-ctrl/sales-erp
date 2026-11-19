@@ -15,18 +15,24 @@
 # =============================================================================
 param(
     [string]$Dump,
-    [string]$BackupDir = (Join-Path (Split-Path -Parent $PSScriptRoot) "backups"),
+    [string]$BackupDir = "",
     [string]$Container = "sales-erp-postgres",
     [string]$LiveDb = "sales_erp",
     [string]$DrillDb = "sales_erp_restore_drill",
     [string]$DbUser = "postgres",
     # Appended to by the monthly scheduled drill so the result is visible later.
-    [string]$LogFile = (Join-Path (Split-Path -Parent $PSScriptRoot) "backups\drill.log")
+    [string]$LogFile = ""
 )
 
 # Native tools (docker/psql) write NOTICEs to stderr; with "Stop" PowerShell turns those
 # into terminating errors. Every important call below checks $LASTEXITCODE explicitly.
 $ErrorActionPreference = "Continue"
+
+# $PSScriptRoot is not reliable inside param() defaults on Windows PowerShell 5.1.
+$ScriptRoot = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
+$ProjectRoot = Split-Path -Parent $ScriptRoot
+if (-not $BackupDir) { $BackupDir = Join-Path $ProjectRoot "backups" }
+if (-not $LogFile) { $LogFile = Join-Path $BackupDir "drill.log" }
 
 function Write-Log([string]$message) {
     $line = "[{0}] {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $message
@@ -116,5 +122,53 @@ Write-Host "[drill] dropping the scratch database"
 
 docker exec $Container psql -U $DbUser -d postgres -q -c "DROP DATABASE IF EXISTS $DrillDb;" 2>$null | Out-Null
 docker exec $Container rm -f $inside | Out-Null
+
+# ---------------------------------------------------------------------------
+# The copies that leave the machine are encrypted. Prove that the newest cloud
+# copy still decrypts with the current key: a lost or rotated key would only be
+# discovered on the day a restore is actually needed.
+# ---------------------------------------------------------------------------
+$keyFile = Join-Path $ProjectRoot "backup-key.txt"
+$offsiteFolders = @(
+    "D:\OneDrive\Desktop\SFUWT-Project-Backup-2026-09-27\sales-erp-backups",
+    "G:\My Drive\SalesERP-Backups"
+)
+$newestEncrypted = $offsiteFolders |
+    Where-Object { Test-Path $_ } |
+    ForEach-Object { Get-ChildItem -Path $_ -Filter "sales_erp_*.dump.enc" -File } |
+    Sort-Object LastWriteTime -Descending |
+    Select-Object -First 1
+
+if (-not $newestEncrypted) {
+    Write-Log "encryption check: no encrypted off-site copy found (nothing to verify)"
+} elseif (-not (Test-Path $keyFile)) {
+    Write-Log "RESULT: FAIL - encrypted copies exist but $keyFile is missing; they cannot be restored."
+    exit 3
+} else {
+    $plainForCompare = Join-Path $BackupDir ($newestEncrypted.Name -replace '\.enc$', '')
+    $decrypted = Join-Path ([System.IO.Path]::GetTempPath()) "erp-drill-decrypt.dump"
+    try {
+        . (Join-Path $ScriptRoot "backup-crypto.ps1")
+        $key = (Get-Content -Path $keyFile -Raw).Trim()
+        Unprotect-BackupFile -Path $newestEncrypted.FullName -OutPath $decrypted -Password $key | Out-Null
+
+        if (Test-Path $plainForCompare) {
+            $a = (Get-FileHash -Path $plainForCompare -Algorithm SHA256).Hash
+            $b = (Get-FileHash -Path $decrypted -Algorithm SHA256).Hash
+            if ($a -ne $b) {
+                Write-Log "RESULT: FAIL - the encrypted copy does not match the local dump (tampering or a changed key)."
+                Remove-Item -Force $decrypted -ErrorAction SilentlyContinue
+                exit 3
+            }
+        }
+        Write-Log "encryption check: PASS - $($newestEncrypted.Name) decrypts with the stored key"
+    } catch {
+        Write-Log ("RESULT: FAIL - could not decrypt {0}: {1}" -f $newestEncrypted.Name, $_.Exception.Message)
+        Remove-Item -Force $decrypted -ErrorAction SilentlyContinue
+        exit 3
+    } finally {
+        Remove-Item -Force $decrypted -ErrorAction SilentlyContinue
+    }
+}
 
 Write-Log "drill done - backup is usable."

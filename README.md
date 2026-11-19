@@ -226,40 +226,51 @@ curl http://localhost:3001/api/health
 ./scripts/restore-docker.sh backups/sales_erp_YYYY-MM-DD_HHMMSS.dump   # full restore
 ```
 
-**Windows host (PowerShell + Task Scheduler)**
+**Windows host (PowerShell, runs in the signed-in session)**
 
 ```powershell
-.\scripts\backup-docker.ps1            # run one now
-.\scripts\install-backup-task.ps1      # daily 01:15 task, catches up if the PC slept
-.\scripts\restore-drill.ps1            # PROVE the newest backup restores (scratch database)
-.\scripts\install-drill-task.ps1       # monthly drill on the 1st at 02:30
-Get-ScheduledTaskInfo -TaskName "SalesERP-DB-Backup"
-Get-Content backups\drill.log -Tail 5
+.\scripts\backup-docker.ps1            # run one backup now
+.\scripts\restore-drill.ps1            # prove the newest backup restores (scratch database)
+.\scripts\backup-agent.ps1 -Once       # what the background agent does on each check
+Get-Content backups\agent.log -Tail 10
 ```
 
-All scripts dump **inside** the db container (nothing to install on the host). The dump is written
-to a temp name, verified with `pg_restore --list` and only then kept - a partial file can never look
-like a backup. `restore-drill.ps1` restores into a scratch database, compares the row counts of 15
-tables with the live database and drops the scratch copy; the live data is never touched.
+The schedule is a small **background agent** started from the Startup folder
+(`SalesERP-Backup-Agent.cmd` -> `scripts\run-backup-agent.cmd` -> `backup-agent.ps1`).
+Every 30 minutes it runs the backup when the newest dump is older than 20 hours, and runs the
+restore drill once a month (marker: `backups\.last-drill`). A named mutex keeps a single instance.
 
-**Off-site copy (automatic):** after verification the dump is copied to
-`D:\OneDrive\Desktop\SFUWT-Project-Backup-2026-09-27\sales-erp-backups`, the SHA-256 hash is
-compared, and the copy is pruned with the same 14-day retention. OneDrive then syncs it to the
-cloud. Point the copy at a USB/network drive with
-`.\scripts\backup-docker.ps1 -OffsiteDir "X:\SalesERP-Backups"`, or skip it with `-OffsiteDir ""`.
-A failed copy makes the task report a non-zero result instead of failing silently.
+> Why not Task Scheduler? On this machine `docker.exe` blocks forever when it is started by a
+> scheduled task (the Docker Desktop pipe is not reachable from that token), while it works
+> normally from the signed-in session. The two Task Scheduler jobs (`SalesERP-DB-Backup`,
+> `SalesERP-Backup-Drill`) are therefore **registered but disabled** - re-enable them on a Linux
+> server (`scripts/*.sh` + cron) or on a machine where the docker CLI works from a task.
+> Consequence: the agent only runs while this user is logged in; the workstation is on during the
+> day, and the 20-hour window means a missed 01:15 run is caught at the next logon.
 
-OneDrive is started at logon by `OneDrive-Autostart.cmd` in the user Startup folder (only when it
-is not already running), so the nightly copy keeps leaving the machine even if OneDrive was closed
-by hand.
+**Encryption.** The copies that leave the machine are encrypted with AES-256-CBC + HMAC-SHA256
+(PBKDF2-SHA256, 100 000 iterations). The local dump stays plain for fast restores. The key lives in
+`D:\sales-erp\backup-key.txt` (git-ignored, copied into the private OneDrive project backup) -
+**also put it in a password manager**: without it the cloud copies cannot be restored.
 
-| Task | When | What |
-|---|---|---|
-| `SalesERP-DB-Backup` | daily 01:15 | dump -> verify -> local keep -> off-site copy; log `backups\backup.log` |
-| `SalesERP-Backup-Drill` | 1st of every month, 02:30 | restore the newest dump into a scratch DB, compare 15 tables, drop it; log `backups\drill.log` |
+```powershell
+.\scripts\decrypt-backup.ps1 -Encrypted "G:\My Drive\SalesERP-Backups\sales_erp_....dump.enc"
+```
 
-> Both have been run on this machine: backup `result 0`, drill `RESULT: PASS` (15/15 tables), and
-> the scratch database was dropped afterwards.
+**Off-site copies (automatic, two destinations):** after verification the dump is encrypted once and
+copied to
+
+* `D:\OneDrive\Desktop\SFUWT-Project-Backup-2026-09-27\sales-erp-backups` (OneDrive), and
+* `G:\My Drive\SalesERP-Backups` (Google Drive, when it is mounted),
+
+each with a SHA-256 comparison and the same 14-day retention. A destination that is not available
+(a USB stick left at home, a paused cloud client) only logs a warning; the agent reports failure only
+when **no** destination received the file. Add your own with
+`-OffsiteDir "X:\SalesERP-Backups","\\server\share\SalesERP"`.
+
+**Drill result so far:** 15/15 tables matched the live database, the restored copy answered the core
+business queries, the encrypted copy decrypted to the same SHA-256, and the scratch database was
+dropped afterwards.
 
 > **Never commit a database dump to git.** The dumps contain customer data, password hashes and the
 > whole audit trail; git history is permanent and would also corrupt on every binary diff. Git holds

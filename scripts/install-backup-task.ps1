@@ -13,10 +13,13 @@
 param(
     [string]$Time = "01:15",
     [string]$TaskName = "SalesERP-DB-Backup",
-    [string]$BackupDir = (Join-Path (Split-Path -Parent $PSScriptRoot) "backups")
+    [string]$BackupDir = ""
 )
 
 $ErrorActionPreference = "Stop"
+
+$ScriptRoot = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
+if (-not $BackupDir) { $BackupDir = Join-Path (Split-Path -Parent $ScriptRoot) "backups" }
 
 $script = Join-Path $PSScriptRoot "backup-docker.ps1"
 if (-not (Test-Path $script)) { throw "backup-docker.ps1 not found next to this script" }

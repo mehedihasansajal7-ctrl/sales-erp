@@ -291,3 +291,21 @@ Owner rule: *"rate er niche .00001 tk o allow na"*. Implemented as a hard floor 
 * Verified: `off-site: 2 of 2 destination(s) updated`, scheduled task `LastTaskResult = 0`.
 * Note: both cloud copies are unencrypted dumps (customer data + password hashes). Encryption is the
   next hardening step if any dump may leave the owner's private cloud accounts.
+
+## Backup encryption + background agent (2026-11-19)
+
+* **Encryption**: off-site copies are now AES-256-CBC + HMAC-SHA256 (PBKDF2-SHA256, 100k iterations,
+  `scripts/backup-crypto.ps1`). The local dump stays plain for fast restores. Key:
+  `D:\sales-erp\backup-key.txt` (git-ignored). Round-trip verified: the cloud `.enc` decrypted back to
+  the same SHA-256 as the local dump; `scripts/decrypt-backup.ps1` does it by hand.
+* Old **unencrypted** dumps were removed from both cloud folders when the first encrypted copy landed.
+* The monthly drill now also **proves the encrypted copy decrypts** with the stored key and fails the
+  task (exit 3) when it does not.
+* **Task Scheduler could not be used for this**: `docker.exe` hangs indefinitely when started by a
+  scheduled task on this machine (three stuck instances proved it, with the same user, session and
+  environment as the working shell). Replaced by a **background agent** in the Startup folder
+  (`SalesERP-Backup-Agent.cmd` -> `run-backup-agent.cmd` -> `backup-agent.ps1`): every 30 minutes it
+  backs up when the newest dump is over 20 h old and runs the monthly drill (mutex = single instance,
+  `backups\agent.log`). The two scheduled tasks are registered but **disabled**.
+* Verified end-to-end from the agent: backup exit 0, encryption, `off-site: 2 of 2`, drill PASS with
+  "encryption check: PASS".

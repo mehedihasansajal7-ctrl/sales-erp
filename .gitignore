@@ -36,6 +36,9 @@ yarn-error.log*
 
 # database dumps / backups (contain live business data - never commit)
 /backups/
+# AES key for the encrypted off-site copies - never commit, never put in a public place
+/backup-key.txt
+/backups/
 *.db
 *.db-journal
 
